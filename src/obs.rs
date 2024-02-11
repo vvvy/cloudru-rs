@@ -175,6 +175,7 @@ impl Bucket {
         request.timestamp_and_sign(&self.bucket_name, &self.aksk)
     }
 
+    /// get object at `remote_path` and write its data to `w`
     pub fn get_object<W: Write>(&self, remote_path: impl AsRef<str>, w: &mut W) -> Result<()> {
         let client = Client::new();
 
@@ -191,6 +192,7 @@ impl Bucket {
         Ok(())
     }
 
+    /// put object at `remote_path` filling it with data read from `input`
     pub fn put_object<I>(&self, remote_path: impl AsRef<str>, input: I) -> Result<()> where Body: From<I> {
         let client = Client::new();
 
@@ -207,6 +209,7 @@ impl Bucket {
         Ok(())
     }
 
+    /// delete object at `remote_path`
     pub fn delete_object(&self, remote_path: impl AsRef<str>) -> Result<()> {
         let client = Client::new();
 
@@ -222,6 +225,27 @@ impl Bucket {
         Ok(())
     }
 
+    /// copy object from `source_bucket`:`source_path` to `remote_path`
+    pub fn copy_object(&self, remote_path: impl AsRef<str>, source_bucket: impl AsRef<str>, source_path: impl AsRef<str>,) -> Result<()> {
+        let client = Client::new();
+
+        let request = client.request(Method::PUT, self.url(remote_path));
+        let request: RequestBuilder = self.start_request(request);
+        let request = request.header(
+            "x-obs-copy-source", 
+            format!("/{}/{}", source_bucket.as_ref(), source_path.as_ref())
+        );
+        let request = self.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = client.execute(request)?;
+        bail_on_failure!(result);
+
+        Ok(())
+    }
+
+    /// get object's metadata
     /// @see https://support.hc.sbercloud.ru/api/obs/obs_04_0084.html
     pub fn get_object_meta(&self, remote_path: impl AsRef<str>) -> Result<ObjectMeta> {
         let client = Client::new();
@@ -248,6 +272,7 @@ impl Bucket {
         Ok(ObjectMeta { content_length, content_type, last_modified })                
     }
 
+    /// get object reader. The reader implements [std::io::Read].
     pub fn object_reader(&self, remote_path: impl AsRef<str>) -> Result<ObjectReader> {
         let remote_path = remote_path.as_ref().to_string();
         let metadata = self.get_object_meta(&remote_path)?;
@@ -264,6 +289,8 @@ impl Bucket {
         Ok(ObjectReader { remote_path, bucket, client, metadata, pos, len })
     }
 
+    /// get object writer. The writer implements [std::io::Write]. 
+    /// Note that currently the object must not exist or must have zero length
     pub fn object_writer(&self, remote_path: impl AsRef<str> + Clone) -> Result<ObjectWriter> {
         let remote_path = remote_path.as_ref().to_string();
         let bucket = self.clone();
@@ -275,9 +302,14 @@ impl Bucket {
 
 }
 
+
+/// Object metadata returned by [obs::Bucket::get_object_meta]
 pub struct ObjectMeta {
+    /// Length of the object in bytes as seen by OBS 
     pub content_length: Option<u64>,
+    /// Type of the object's content
     pub content_type: Option<String>,
+    /// Date the object was last modified, like "WED, 01 Jul 2015 01:19:21 GMT"
     pub last_modified: Option<String>,
 }
 
@@ -291,9 +323,12 @@ pub struct ObjectReader {
 }
 
 impl ObjectReader {
-    pub fn update_meta(&mut self) -> Result<&ObjectMeta> {
-        todo!()
+    /// updates a cached copy of the object's metadata and returns reference to it
+    pub fn get_meta(&mut self) -> Result<&ObjectMeta> {
+        self.metadata = self.bucket.get_object_meta(&self.remote_path)?;
+        Ok(&self.metadata)
     }
+    /// returns a cached copy of the object's metadata
     pub fn meta(&self) -> &ObjectMeta { &self.metadata }
     pub fn len(&self) -> u64 { self.len }
     pub fn pos(&self) -> u64 { self.pos }
@@ -351,6 +386,18 @@ pub struct ObjectWriter {
     bucket: Bucket,
     client: Client,
     pos: u64,
+}
+
+impl ObjectWriter {
+    /// Synchronizes cached position with the length of the actual object, so that we can resume appending to it.
+    /// The object must exist and must be created in append mode.
+    pub fn sync_position(&mut self) -> Result<u64> {
+        let meta = self.bucket.get_object_meta(&self.remote_path)?;
+        self.pos = meta.content_length.ok_or_else(
+            || CloudRuError::new(CloudRuInnerError::UnknownObjectLength, self.remote_path.to_owned())
+        )?;
+        Ok(self.pos)
+    }
 }
 
 impl Write for ObjectWriter {
