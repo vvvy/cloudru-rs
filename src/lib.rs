@@ -12,10 +12,10 @@ pub mod obs;
 pub mod apig;
 mod security;
 
-pub use error::{HCError, HCInnerError, Cx};
+pub use error::{CloudRuError, CloudRuInnerError, Cx};
 pub use security::AkSk;
 pub use serde_json::Value as JsonValue;
 pub use serde_json::to_writer_pretty as json_to_writer_pretty;
 pub use config::Config;
 
-pub type Result<T> = std::result::Result<T, HCError>;
+pub type Result<T> = std::result::Result<T, CloudRuError>;

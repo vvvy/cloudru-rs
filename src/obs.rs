@@ -106,7 +106,7 @@ impl Bucket {
     pub fn new(bucket_name: String, obs_endpoint: String, aksk: AkSk) -> Result<Self> {
         let mut bucket_url: Url = obs_endpoint.parse()?;
         let bucket_host = bucket_url.host()
-            .ok_or(HCInnerError::Parameter(ParameterKind::S3BucketUrl))?;
+            .ok_or(CloudRuInnerError::Parameter(ParameterKind::S3BucketUrl))?;
         let host = format!("{}.{}", bucket_name, bucket_host);
         bucket_url.set_host(Some(&host))?;
         let host = host.parse()?;
@@ -146,7 +146,7 @@ impl Bucket {
             };
             Ok(p)
         } else {
-            Err(HCInnerError::API(result.status(), result.text()?).into())
+            Err(CloudRuInnerError::API(result.status(), result.text()?).into())
         }
     }
 
@@ -164,7 +164,7 @@ impl Bucket {
             result.copy_to(w)?;
             Ok(())
         } else {
-            Err(HCInnerError::API(result.status(), result.text()?).into())
+            Err(CloudRuInnerError::API(result.status(), result.text()?).into())
         }
     }
 
@@ -182,7 +182,7 @@ impl Bucket {
         if result.status().is_success() {
             Ok(())
         } else {
-            Err(HCInnerError::API(result.status(), result.text()?).into())
+            Err(CloudRuInnerError::API(result.status(), result.text()?).into())
         }
     }
 

@@ -83,7 +83,8 @@ fn test_force_file_name() {
 
 
 pub fn handle_obs(aksk: AkSk, config: Config, obs: Obs) -> Result<JsonValue> {
-    let endpoint: String = obs.obs_endpoint.or(config.endpoint.obs).ok_or(anyhow!("missing setting: obs_endpoint"))?;
+    let endpoint = config.endpoint.resolve(config::svc_id::obs, obs.obs_endpoint.as_deref())?
+        .to_string();
 
     match obs.obs_command {
         ObsCommand::Get(get) => {

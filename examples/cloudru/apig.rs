@@ -1,6 +1,6 @@
 use std::fs::read_to_string;
 use clap::{Subcommand, Args};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 
 use cloudru::*;
 
@@ -73,14 +73,14 @@ pub struct Apig {
 
 
 pub fn handle_apig(aksk: AkSk, config: Config, apig: Apig) -> Result<JsonValue> {
-    let endpoint = apig.apig_endpoint.or(config.endpoint.apig).ok_or(anyhow!("missing setting: apig_endpoint"))?;
+    let endpoint = config.endpoint.resolve(config::svc_id::apig, apig.apig_endpoint.as_deref())?;
 
     match apig.apig_command {
         ApigCommand::GetApiGroupDetails(ApigGetGroupDetails{
             group_id
         }) => {
             let rv = cloudru::apig::get_api_group_detail(
-                &endpoint,
+                endpoint,
                 &group_id,  
                 &aksk
             )?;

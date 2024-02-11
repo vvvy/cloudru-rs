@@ -44,7 +44,7 @@ pub fn is_fg_env() -> bool {
 }
 
 /// provides bootstrap and fg handler wrapper code for json functions 
-pub fn service_function<E: From<HCInnerError>+From<reqwest::Error>>(
+pub fn service_function<E: From<CloudRuInnerError>+From<reqwest::Error>>(
     selector: impl FnOnce(FnData) -> std::result::Result<Box<dyn FgFn>, E>
 ) -> std::result::Result<(), E> {
     let api_addr = readvar("RUNTIME_API_ADDR");
@@ -58,7 +58,7 @@ pub fn service_function<E: From<HCInnerError>+From<reqwest::Error>>(
     };
 
     if api_addr.is_empty() {
-        return Err(HCInnerError::EmptyRuntimeAddr.into());
+        return Err(CloudRuInnerError::EmptyRuntimeAddr.into());
     }
     let mut lambda = selector(fn_data)?;
     let next_invocation_url = format!("http://{api_addr}/v1/runtime/invocation/request");
@@ -76,7 +76,7 @@ pub fn service_function<E: From<HCInnerError>+From<reqwest::Error>>(
         let request_id = response
             .headers()
             .get("X-Cff-Request-Id")
-            .ok_or(HCInnerError::RequestIdNotFound)?
+            .ok_or(CloudRuInnerError::RequestIdNotFound)?
             .to_str()?
             .to_owned();
 
@@ -108,7 +108,7 @@ pub fn service_function<E: From<HCInnerError>+From<reqwest::Error>>(
     loop {
         if let Err(e) = request_loop() {
             match e.inner_ref() {
-                HCInnerError::Reqwest(e) if e.is_timeout() => (),
+                CloudRuInnerError::Reqwest(e) if e.is_timeout() => (),
                 _ => error!("Error: {:?}", e)
             }
             std::thread::sleep(Duration::from_millis(50));

@@ -17,7 +17,7 @@ impl fmt::Display for ParameterKind {
 }
 
 #[derive(Error, Debug)]
-pub enum HCInnerError {
+pub enum CloudRuInnerError {
     #[error("s3: {0}")]
     S3(#[from] s3::error::S3Error),
 
@@ -65,15 +65,18 @@ pub enum HCInnerError {
 
     #[error("ini: {0}")]
     Ini(#[from] ini::Error),
+
+    #[error("UnresolvedEndpoint: svc={0}")]
+    UnresolvedEndpoint(&'static str)
 }
 
 #[derive(Error, Debug)]
-pub struct HCError {
-    inner: HCInnerError,
+pub struct CloudRuError {
+    inner: CloudRuInnerError,
     context: String
 }
 
-impl fmt::Display for HCError {
+impl fmt::Display for CloudRuError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Error: {}", self.inner)?;
         if !self.context.is_empty() {
@@ -83,7 +86,7 @@ impl fmt::Display for HCError {
     }
 }
 
-impl HCError {
+impl CloudRuError {
     pub fn cx(self, context: impl AsRef<str>) -> Self {
         let context = if self.context.is_empty() {
             context.as_ref().to_owned()
@@ -92,10 +95,10 @@ impl HCError {
         };
         Self { context, ..self }
     }
-    pub fn inner_ref(&self) -> &HCInnerError { &self.inner }
+    pub fn inner_ref(&self) -> &CloudRuInnerError { &self.inner }
 }
 
-impl<E> From<E> for HCError where HCInnerError: From<E> {
+impl<E> From<E> for CloudRuError where CloudRuInnerError: From<E> {
     fn from(value: E) -> Self {
         Self { inner: From::from(value), context: Default::default() }
     }
@@ -103,24 +106,24 @@ impl<E> From<E> for HCError where HCInnerError: From<E> {
 
 
 pub trait Cx<T>  {
-    fn cx(self, context: impl AsRef<str>) -> Result<T, HCError>;
-    fn cxd(self, context: impl FnOnce() -> String) -> Result<T, HCError>;
+    fn cx(self, context: impl AsRef<str>) -> Result<T, CloudRuError>;
+    fn cxd(self, context: impl FnOnce() -> String) -> Result<T, CloudRuError>;
 }
 
-impl<T, E> Cx<T> for Result<T, E> where HCError: From<E>   {
-    fn cx(self, context: impl AsRef<str>) -> Result<T, HCError> {
-        self.map_err(|e| Into::<HCError>::into(e).cx(context))
+impl<T, E> Cx<T> for Result<T, E> where CloudRuError: From<E>   {
+    fn cx(self, context: impl AsRef<str>) -> Result<T, CloudRuError> {
+        self.map_err(|e| Into::<CloudRuError>::into(e).cx(context))
     }
 
-    fn cxd(self, context: impl FnOnce() -> String) -> Result<T, HCError> {
-        self.map_err(|e| Into::<HCError>::into(e).cx(&context()))
+    fn cxd(self, context: impl FnOnce() -> String) -> Result<T, CloudRuError> {
+        self.map_err(|e| Into::<CloudRuError>::into(e).cx(&context()))
     }
 }
 
-fn __test_as_error(e: Box<HCError>) -> Box<dyn std::error::Error> {
+fn __test_as_error(e: Box<CloudRuError>) -> Box<dyn std::error::Error> {
     e
 }
 
-fn __test_error_cx<T>(r: Result<T, s3::error::S3Error>) -> Result<T, HCError> {
+fn __test_error_cx<T>(r: Result<T, s3::error::S3Error>) -> Result<T, CloudRuError> {
     r.cx("context")
 }

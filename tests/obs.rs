@@ -18,8 +18,9 @@ fn obs() -> Result<()> {
 
     let config = read_config(DEFAULT_CONFIG_FILE.to_owned())?;
     let aksk = read_credentials(DEFAULT_CREDENTIALS_FILE.to_owned(), credentials_id.to_owned())?;
+    let endpoint = config.endpoint.resolve(config::svc_id::obs, None)?.to_string();
 
-    let bucket = Bucket::new(bucket_name.to_owned(), config.endpoint.obs.unwrap(), aksk)?;
+    let bucket = Bucket::new(bucket_name.to_owned(), endpoint, aksk)?;
 
 
     let data = b"Quick brown fox jumps over lazy dog".to_vec();

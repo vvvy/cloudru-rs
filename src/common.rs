@@ -1,5 +1,5 @@
 use tracing::debug;
-use crate::{Result, mauth, AkSk, HCInnerError};
+use crate::{Result, mauth, AkSk, CloudRuInnerError};
 use reqwest::{Method, blocking::{Request, Client}};
 
 
@@ -45,7 +45,7 @@ pub fn auth_api_call_explicit<R: for<'d> serde::Deserialize<'d> + Default>(
     match status {
         reqwest::StatusCode::NO_CONTENT => Ok(R::default()),
         s if s.is_success() => Ok(resp.json()?),
-        s => Err(HCInnerError::API(s, resp.text()?).into())
+        s => Err(CloudRuInnerError::API(s, resp.text()?).into())
     }
 }
 
