@@ -1,0 +1,4 @@
+#test bucket name. Must exist and be fully accessible
+bucket = test-bucket
+#section id from ~/.cloudru/credentials
+credentials_id = default
