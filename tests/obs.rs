@@ -1,6 +1,43 @@
+use std::io::Read;
+
 use cloudru::{*, obs::*, config::*};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
+
+
+fn basic_test(bucket: Bucket) -> Result<()> {
+    let data = b"Quick brown fox jumps over lazy dog".to_vec();
+    let () = bucket.put_object("test.txt", data.clone())?;
+
+    let mut data_out = vec![];
+    let () = bucket.get_object("test.txt", &mut data_out)?;
+
+    assert_eq!(data, data_out);
+
+    let () = bucket.put_object("test2.txt", data.clone())?;
+    let list = bucket.list(None)?;
+    println!("{list:?}");
+
+    Ok(())
+}
+
+fn object_reader_test(bucket: Bucket) -> Result<()> {
+    let data: Vec<u8> = b"Quick brown fox jumps over lazy dog".to_vec();
+    let () = bucket.put_object("test.txt", data.clone())?;
+
+    let mut reader = bucket.object_reader("test.txt")?;
+
+    let mut buf = [0; 10];
+
+    assert_eq!(reader.read(&mut buf).unwrap(), 10);
+    assert_eq!(buf, &data[0..10]);
+
+    assert_eq!(reader.read(&mut buf).unwrap(), 10);
+    assert_eq!(buf, &data[10..20]);
+
+    Ok(())
+}
+
 
 #[test]
 fn obs() -> Result<()> {
@@ -22,18 +59,8 @@ fn obs() -> Result<()> {
 
     let bucket = Bucket::new(bucket_name.to_owned(), endpoint, aksk)?;
 
-
-    let data = b"Quick brown fox jumps over lazy dog".to_vec();
-    let () = bucket.put_object("test.txt", data.clone())?;
-
-    let mut data_out = vec![];
-    let () = bucket.get_object("test.txt", &mut data_out)?;
-
-    assert_eq!(data, data_out);
-
-    let () = bucket.put_object("test2.txt", data.clone())?;
-    let list = bucket.list(None)?;
-    println!("{list:?}");
+    basic_test(bucket.clone())?;
+    object_reader_test(bucket)?;
 
     Ok(())
 }

@@ -1,13 +1,14 @@
-use std::io::Write;
-
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use crate::*;
 use reqwest::{Url, blocking::{Request, Client, Body, RequestBuilder}, Method, header::HeaderValue};
 use error::ParameterKind;
 use mauth_obs::*;
 use serde_derive::Deserialize;
 use tracing::{debug, instrument, Level, enabled};
+use CloudRuInnerError;
+use CloudRuError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Bucket {
     bucket_name: String,
     bucket_url: Url,
@@ -101,6 +102,14 @@ pub struct ListBucketContents {
     pub storage_class: String,
 }
 
+macro_rules! bail_on_failure {
+    ($result:expr) => {
+        if !$result.status().is_success() {
+            return Err(CloudRuInnerError::API($result.status(), $result.text()?).into());
+        }        
+    };
+}
+
 
 impl Bucket {
     pub fn new(bucket_name: String, obs_endpoint: String, aksk: AkSk) -> Result<Self> {
@@ -114,9 +123,9 @@ impl Bucket {
     }
 
     #[inline]
-    fn url(&self, path: &str) -> Url {
+    fn url(&self, path: impl AsRef<str>) -> Url {
         let mut url = self.bucket_url.clone();
-        url.set_path(path);
+        url.set_path(path.as_ref());
         url
     }
 
@@ -136,21 +145,20 @@ impl Bucket {
         debug!(request_full=?request);
 
         let result = client.execute(request)?;
-        if result.status().is_success() {
-            let p: ListBucketResult = if enabled!(Level::DEBUG) {
-                let text = result.text()?;
-                debug!(response_text=?&text);
-                serde_xml_rs::from_str(&text)?
-            } else {
-                serde_xml_rs::from_reader(result)?
-            };
-            Ok(p)
+        bail_on_failure!(result);
+
+        let p: ListBucketResult = if enabled!(Level::DEBUG) {
+            let text = result.text()?;
+            debug!(response_text=?&text);
+            serde_xml_rs::from_str(&text)?
         } else {
-            Err(CloudRuInnerError::API(result.status(), result.text()?).into())
-        }
+            serde_xml_rs::from_reader(result)?
+        };
+        Ok(p)
+
     }
 
-    pub fn get_object<W: Write>(&self, remote_path: &str, w: &mut W) -> Result<()> {
+    pub fn get_object<W: Write>(&self, remote_path: impl AsRef<str>, w: &mut W) -> Result<()> {
         let client = Client::new();
 
         let request = client.request(Method::GET, self.url(remote_path))
@@ -160,15 +168,13 @@ impl Bucket {
         debug!(request_full=?request);
 
         let mut result = client.execute(request)?;
-        if result.status().is_success() {
-            result.copy_to(w)?;
-            Ok(())
-        } else {
-            Err(CloudRuInnerError::API(result.status(), result.text()?).into())
-        }
+        bail_on_failure!(result);
+        
+        result.copy_to(w)?;
+        Ok(())
     }
 
-    pub fn put_object<I>(&self, remote_path: &str, input: I) -> Result<()> where Body: From<I> {
+    pub fn put_object<I>(&self, remote_path: impl AsRef<str>, input: I) -> Result<()> where Body: From<I> {
         let client = Client::new();
 
         let request = client.request(Method::PUT, self.url(remote_path))
@@ -179,11 +185,114 @@ impl Bucket {
         debug!(request_full=?request);
 
         let result = client.execute(request)?;
-        if result.status().is_success() {
-            Ok(())
-        } else {
-            Err(CloudRuInnerError::API(result.status(), result.text()?).into())
-        }
+        bail_on_failure!(result);
+
+        Ok(())
+    }
+
+    /// @see https://support.hc.sbercloud.ru/api/obs/obs_04_0084.html
+    pub fn get_object_meta(&self, remote_path: impl AsRef<str>) -> Result<ObjectMeta> {
+        let client = Client::new();
+
+        let request = client.request(Method::HEAD, self.url(remote_path))
+            .header("host", self.host.clone())
+            .timestamp_and_sign(&self.bucket_name, &self.aksk)?;
+
+        debug!(request_full=?request);
+
+        let result = client.execute(request)?;
+        bail_on_failure!(result);
+
+        let content_length = result.headers().get("content-length")
+            .and_then(|w| w.to_str().ok())
+            .and_then(|w| w.parse().ok());
+        let content_type = result.headers().get("content-type")
+            .and_then(|w| w.to_str().ok())
+            .map(|w| w.to_owned());
+
+        Ok(ObjectMeta { content_length, content_type })                
+    }
+
+    pub fn object_reader(&self, remote_path: impl AsRef<str> + Clone) -> Result<ObjectReader> {
+        let metadata = self.get_object_meta(remote_path.clone())?;
+        let len = metadata.content_length.ok_or_else(|| CloudRuError::new(
+            CloudRuInnerError::UnknownObjectLength, 
+            remote_path.as_ref().to_string()
+        ))?;
+
+        let bucket = self.clone();
+        let remote_path = remote_path.as_ref().to_string();
+        let client = Client::new();
+        
+        let pos = 0;
+         
+        Ok(ObjectReader { remote_path, bucket, client, metadata, pos, len })
     }
 
 }
+
+pub struct ObjectMeta {
+    pub content_length: Option<u64>,
+    pub content_type: Option<String>,
+}
+
+pub struct ObjectReader {
+    remote_path: String,
+    bucket: Bucket,
+    client: Client,
+    metadata: ObjectMeta,
+    len: u64,
+    pos: u64,
+}
+
+impl ObjectReader {
+    pub fn meta(&self) -> &ObjectMeta { &self.metadata }
+    pub fn len(&self) -> u64 { self.len }
+    pub fn pos(&self) -> u64 { self.pos }
+}
+
+impl Read for ObjectReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0)
+        }
+
+        let (first, last) = (self.pos, self.pos + buf.len() as u64 - 1);
+        let range = format!("bytes={first}-{last}");
+
+        let request = self.client.request(Method::GET, self.bucket.url(&self.remote_path))
+            .header("host", self.bucket.host.clone())
+            .header("range", range)
+            .timestamp_and_sign(&self.bucket.bucket_name, &self.bucket.aksk)?;
+    
+        debug!(request_full=?request);
+
+        let mut result = self.client.execute(request).cx("Client::execute")?;
+        if result.status().is_success() {
+            if result.status().as_u16() != 206 { //Partial content
+                return Err(io::Error::new(io::ErrorKind::Unsupported, "returning ranges not suppoerted"))
+            }
+            let mut w = buf;
+            let count = result.copy_to(&mut w).cx("copy_to")?;
+            self.pos += count;
+            Ok(count as usize)
+        } else {
+            Err(CloudRuInnerError::API(result.status(), result.text().cx("text")?).into())
+        }
+    }
+}
+
+impl Seek for ObjectReader {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.pos = match pos {
+            SeekFrom::Start(pos) =>
+                pos,
+            SeekFrom::Current(off) => 
+                self.pos.checked_add_signed(off).ok_or(io::Error::from(io::ErrorKind::InvalidInput))?,
+            SeekFrom::End(off) => 
+                self.len.checked_add_signed(off).ok_or(io::Error::from(io::ErrorKind::InvalidInput))?,
+        };
+        Ok(self.pos)
+    }
+}
+    

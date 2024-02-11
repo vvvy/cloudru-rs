@@ -1,5 +1,5 @@
 use thiserror::Error;
-use std::fmt;
+use std::{fmt, io};
 use std::result::Result;
 
 
@@ -67,7 +67,13 @@ pub enum CloudRuInnerError {
     Ini(#[from] ini::Error),
 
     #[error("UnresolvedEndpoint: svc={0}")]
-    UnresolvedEndpoint(&'static str)
+    UnresolvedEndpoint(&'static str),
+
+    #[error("UnknownObjectLength")]
+    UnknownObjectLength,
+
+    #[error("Other")]
+    Other,
 }
 
 #[derive(Error, Debug)]
@@ -87,6 +93,7 @@ impl fmt::Display for CloudRuError {
 }
 
 impl CloudRuError {
+    pub fn new(inner: CloudRuInnerError, context: String) -> Self { Self { inner, context } }
     pub fn cx(self, context: impl AsRef<str>) -> Self {
         let context = if self.context.is_empty() {
             context.as_ref().to_owned()
@@ -126,4 +133,16 @@ fn __test_as_error(e: Box<CloudRuError>) -> Box<dyn std::error::Error> {
 
 fn __test_error_cx<T>(r: Result<T, s3::error::S3Error>) -> Result<T, CloudRuError> {
     r.cx("context")
+}
+
+impl From<CloudRuInnerError> for io::Error {
+    fn from(value: CloudRuInnerError) -> Self {
+        <CloudRuError as From<CloudRuInnerError>>::from(value).into()
+    }
+}
+
+impl From<CloudRuError> for io::Error {
+    fn from(value: CloudRuError) -> Self {
+        io::Error::new(io::ErrorKind::Other, value)
+    }
 }
