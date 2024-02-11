@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use cloudru::{*, obs::*, config::*};
 use tracing::Level;
@@ -38,9 +38,35 @@ fn object_reader_test(bucket: Bucket) -> Result<()> {
     Ok(())
 }
 
+fn object_writer_test(bucket: Bucket) -> Result<()> {
+    let obj = "test_writer.txt";
+    let data: Vec<u8> = b"Quick brown fox jumps over lazy dog".to_vec();
+
+    bucket.delete_object(obj)?;
+
+    let mut writer = bucket.object_writer(obj)?;
+
+    assert_eq!(writer.write(&data[0..10]).unwrap(), 10);
+    assert_eq!(writer.write(&data[10..]).unwrap(), data.len() - 10);
+
+    let mut data_read = vec![];
+    bucket.get_object(obj, &mut data_read)?;
+    assert_eq!(data, data_read);
+
+    Ok(())
+}
+
+
 
 #[test]
 fn obs() -> Result<()> {
+    let bypass: bool = std::env::var("CLOUDRU_BYPASS_INTEGRATION_TESTS")
+        .ok().unwrap_or_else(|| "true".to_owned()).parse().unwrap();
+    if bypass { 
+        eprintln!("Test bypassed as CLOUDRU_BYPASS_INTEGRATION_TESTS is set to true");
+        return Ok(());
+    }
+
     let cfg_ini = ini::Ini::load_from_file(".obs.test.config")?;
     let bucket_name = cfg_ini.general_section().get("bucket").unwrap();
     let credentials_id = cfg_ini.general_section().get("credentials_id").unwrap_or("default");
@@ -60,7 +86,8 @@ fn obs() -> Result<()> {
     let bucket = Bucket::new(bucket_name.to_owned(), endpoint, aksk)?;
 
     basic_test(bucket.clone())?;
-    object_reader_test(bucket)?;
+    object_reader_test(bucket.clone())?;
+    object_writer_test(bucket.clone())?;
 
     Ok(())
 }

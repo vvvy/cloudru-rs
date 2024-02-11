@@ -32,6 +32,7 @@ impl Signer for RequestBuilder {
 trait WithVar {
     fn with_var<T: AsRef<str> + ?Sized>(self, var: &str, val: &T) -> Url;
     fn with_var_opt<T: AsRef<str> + ?Sized>(self, var: &str, val: Option<&T>) -> Url;
+    fn with_var_key(self, var: &str) -> Url;
 }
 
 impl WithVar for Url {
@@ -46,6 +47,12 @@ impl WithVar for Url {
         self.query_pairs_mut().append_pair(var, val.as_ref());
         self
     }
+
+    fn with_var_key(mut self, var: &str) -> Url {
+        self.query_pairs_mut().append_key_only(var);
+        self
+    }
+
 }
 
 /*
@@ -105,7 +112,9 @@ pub struct ListBucketContents {
 macro_rules! bail_on_failure {
     ($result:expr) => {
         if !$result.status().is_success() {
-            return Err(CloudRuInnerError::API($result.status(), $result.text()?).into());
+            let status = $result.status();
+            let err = $result.text().cx("error text in bail_on_failure")?;
+            return Err(CloudRuInnerError::API(status, err).into());
         }        
     };
 }
@@ -158,13 +167,21 @@ impl Bucket {
 
     }
 
+    fn start_request(&self, request: RequestBuilder) -> RequestBuilder {
+        request.header("host", self.host.clone())
+    }
+
+    fn sign_request(&self, request: RequestBuilder) -> Result<Request> {
+        request.timestamp_and_sign(&self.bucket_name, &self.aksk)
+    }
+
     pub fn get_object<W: Write>(&self, remote_path: impl AsRef<str>, w: &mut W) -> Result<()> {
         let client = Client::new();
 
-        let request = client.request(Method::GET, self.url(remote_path))
-            .header("host", self.host.clone())
-            .timestamp_and_sign(&self.bucket_name, &self.aksk)?;
-        
+        let request = client.request(Method::GET, self.url(remote_path));
+        let request: RequestBuilder = self.start_request(request);
+        let request = self.sign_request(request)?;
+
         debug!(request_full=?request);
 
         let mut result = client.execute(request)?;
@@ -177,10 +194,25 @@ impl Bucket {
     pub fn put_object<I>(&self, remote_path: impl AsRef<str>, input: I) -> Result<()> where Body: From<I> {
         let client = Client::new();
 
-        let request = client.request(Method::PUT, self.url(remote_path))
-            .header("host", self.host.clone())
-            .body(input)
-            .timestamp_and_sign(&self.bucket_name, &self.aksk)?;
+        let request = client.request(Method::PUT, self.url(remote_path));
+        let request: RequestBuilder = self.start_request(request);
+        let request = request.body(input);
+        let request = self.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = client.execute(request)?;
+        bail_on_failure!(result);
+
+        Ok(())
+    }
+
+    pub fn delete_object(&self, remote_path: impl AsRef<str>) -> Result<()> {
+        let client = Client::new();
+
+        let request = client.request(Method::DELETE, self.url(remote_path));
+        let request: RequestBuilder = self.start_request(request);
+        let request = self.sign_request(request)?;
 
         debug!(request_full=?request);
 
@@ -194,9 +226,9 @@ impl Bucket {
     pub fn get_object_meta(&self, remote_path: impl AsRef<str>) -> Result<ObjectMeta> {
         let client = Client::new();
 
-        let request = client.request(Method::HEAD, self.url(remote_path))
-            .header("host", self.host.clone())
-            .timestamp_and_sign(&self.bucket_name, &self.aksk)?;
+        let request = client.request(Method::HEAD, self.url(remote_path));
+        let request: RequestBuilder = self.start_request(request);
+        let request = self.sign_request(request)?;
 
         debug!(request_full=?request);
 
@@ -209,19 +241,22 @@ impl Bucket {
         let content_type = result.headers().get("content-type")
             .and_then(|w| w.to_str().ok())
             .map(|w| w.to_owned());
-
-        Ok(ObjectMeta { content_length, content_type })                
+        //Last-Modified: WED, 01 Jul 2015 01:19:21 GMT
+        let last_modified = result.headers().get("last-modified")
+            .and_then(|w| w.to_str().ok())
+            .map(|w| w.to_owned());
+        Ok(ObjectMeta { content_length, content_type, last_modified })                
     }
 
-    pub fn object_reader(&self, remote_path: impl AsRef<str> + Clone) -> Result<ObjectReader> {
-        let metadata = self.get_object_meta(remote_path.clone())?;
+    pub fn object_reader(&self, remote_path: impl AsRef<str>) -> Result<ObjectReader> {
+        let remote_path = remote_path.as_ref().to_string();
+        let metadata = self.get_object_meta(&remote_path)?;
         let len = metadata.content_length.ok_or_else(|| CloudRuError::new(
             CloudRuInnerError::UnknownObjectLength, 
-            remote_path.as_ref().to_string()
+            remote_path.clone()
         ))?;
 
         let bucket = self.clone();
-        let remote_path = remote_path.as_ref().to_string();
         let client = Client::new();
         
         let pos = 0;
@@ -229,11 +264,21 @@ impl Bucket {
         Ok(ObjectReader { remote_path, bucket, client, metadata, pos, len })
     }
 
+    pub fn object_writer(&self, remote_path: impl AsRef<str> + Clone) -> Result<ObjectWriter> {
+        let remote_path = remote_path.as_ref().to_string();
+        let bucket = self.clone();
+        let client = Client::new();
+        let pos = 0;
+         
+        Ok(ObjectWriter { remote_path, bucket, client, pos })
+    }
+
 }
 
 pub struct ObjectMeta {
     pub content_length: Option<u64>,
     pub content_type: Option<String>,
+    pub last_modified: Option<String>,
 }
 
 pub struct ObjectReader {
@@ -246,6 +291,9 @@ pub struct ObjectReader {
 }
 
 impl ObjectReader {
+    pub fn update_meta(&mut self) -> Result<&ObjectMeta> {
+        todo!()
+    }
     pub fn meta(&self) -> &ObjectMeta { &self.metadata }
     pub fn len(&self) -> u64 { self.len }
     pub fn pos(&self) -> u64 { self.pos }
@@ -260,10 +308,10 @@ impl Read for ObjectReader {
         let (first, last) = (self.pos, self.pos + buf.len() as u64 - 1);
         let range = format!("bytes={first}-{last}");
 
-        let request = self.client.request(Method::GET, self.bucket.url(&self.remote_path))
-            .header("host", self.bucket.host.clone())
-            .header("range", range)
-            .timestamp_and_sign(&self.bucket.bucket_name, &self.bucket.aksk)?;
+        let request = self.client.request(Method::GET, self.bucket.url(&self.remote_path));
+        let request: RequestBuilder = self.bucket.start_request(request);
+        let request = request.header("range", range);
+        let request = self.bucket.sign_request(request)?;
     
         debug!(request_full=?request);
 
@@ -295,4 +343,49 @@ impl Seek for ObjectReader {
         Ok(self.pos)
     }
 }
-    
+
+
+
+pub struct ObjectWriter {
+    remote_path: String,
+    bucket: Bucket,
+    client: Client,
+    pos: u64,
+}
+
+impl Write for ObjectWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        /*
+POST /ObjectName?append&position=Position HTTP/1.1 
+Host: bucketname.obs.region.example.com
+Content-Type: application/xml 
+Content-Length: length
+Authorization: authorization
+Date: date
+<Optional Additional Header> 
+<object Content>
+         */
+
+        let url = self.bucket.url(&self.remote_path)
+            .with_var_key("append")
+            .with_var("position", &format!("{}", self.pos));
+
+        let request = self.client.request(Method::POST, url);
+        let request: RequestBuilder = self.bucket.start_request(request);
+        let request = request.body(Vec::from(buf));
+        let request = self.bucket.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = self.client.execute(request).cx("Client::execute")?;
+        bail_on_failure!(result);
+        let count = buf.len();
+        self.pos += count as u64;
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
