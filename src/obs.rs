@@ -149,6 +149,11 @@ impl Bucket {
         url
     }
 
+    #[inline]
+    pub fn make_url(&self, path: impl AsRef<str>) -> String {
+        self.url(path).to_string()
+    }
+
     #[instrument]
     pub fn list(&self, prefix: Option<&str>) -> Result<ListBucketResult> {
         
@@ -302,7 +307,7 @@ impl Bucket {
 
     /// get object writer. The writer implements [std::io::Write]. 
     /// Note that currently the object must not exist or must have zero length
-    pub fn object_writer(&self, remote_path: impl AsRef<str> + Clone) -> Result<ObjectWriter> {
+    pub fn object_writer(&self, remote_path: impl AsRef<str>) -> Result<ObjectWriter> {
         let remote_path = remote_path.as_ref().to_string();
         let bucket = self.clone();
         let client = Client::new();
