@@ -8,6 +8,17 @@ use tracing::{debug, instrument, Level, enabled};
 use CloudRuInnerError;
 use CloudRuError;
 
+
+pub struct ObsClient {
+    endpoint: String,
+    aksk: AkSk,
+}
+
+impl ObsClient {
+    pub fn new(endpoint: String, aksk: AkSk) -> Self { Self { endpoint, aksk } }
+    pub fn bucket(&self, bucket_name: String) -> Result<Bucket> { Bucket::new(bucket_name, self.endpoint.clone(), self.aksk.clone()) }
+}
+
 #[derive(Debug, Clone)]
 pub struct Bucket {
     bucket_name: String,

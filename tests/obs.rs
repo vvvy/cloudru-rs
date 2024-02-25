@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use cloudru::{*, obs::*, config::*};
+use cloudru::{Client, Result, obs::Bucket};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -79,11 +79,9 @@ fn obs() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber)
         .expect("setting default subscriber failed");
 
-    let config = read_config(DEFAULT_CONFIG_FILE.to_owned())?;
-    let aksk = read_credentials(DEFAULT_CREDENTIALS_FILE.to_owned(), credentials_id.to_owned())?;
-    let endpoint = config.endpoint.resolve(config::svc_id::obs, None)?.to_string();
-
-    let bucket = Bucket::new(bucket_name.to_owned(), endpoint, aksk)?;
+    let client = Client::builder().credentials_id(credentials_id).build()?;
+    let obs = client.obs()?;
+    let bucket = obs.bucket(bucket_name.to_owned())?;
 
     basic_test(bucket.clone())?;
     object_reader_test(bucket.clone())?;

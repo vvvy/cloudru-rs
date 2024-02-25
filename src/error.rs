@@ -72,6 +72,9 @@ pub enum CloudRuInnerError {
     #[error("UnknownObjectLength")]
     UnknownObjectLength,
 
+    #[error("Missing project_id")]
+    MissingProjectId,
+
     #[error("Other")]
     Other,
 }

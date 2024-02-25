@@ -34,7 +34,7 @@ impl Endpoint {
     pub fn resolve<'t>(&'t self, service_id: &'static str, endpoint: Option<&'t str>) -> Result<&'t str> {
         if let Some(e) = endpoint { return Ok(e); }
         if let Some(e) = self.endpoint.get(service_id).map(|s| s.as_str()) { return Ok(e); }
-        if let Some(e) =  DEFAULT_ENDPOINTS.get(service_id).map(|&e| e) { return Ok(e); }
+        if let Some(e) = DEFAULT_ENDPOINTS.get(service_id).map(|&e| e) { return Ok(e); }
         Err(CloudRuInnerError::UnresolvedEndpoint(service_id).into())
     }
 }
@@ -46,12 +46,12 @@ pub struct Config {
     pub region: String
 }
 
-pub fn read_config(path: String) -> Result<Config> {
+pub fn read_config(path: String, force: bool) -> Result<Config> {
     let mut c = Config::default();
 
     let path = tildeexpand(path);
     let p = std::path::PathBuf::from(&path);
-    if !p.exists() { return Ok(c) }
+    if !p.exists() && !force { return Ok(c) }
 
     let config_ini = ini::Ini::load_from_file(p).cxd(|| format!("reading config file {path}"))?;
 

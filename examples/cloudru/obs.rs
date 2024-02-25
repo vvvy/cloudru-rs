@@ -1,17 +1,12 @@
 use clap::{Subcommand, Args};
 use anyhow::{Result, anyhow};
-use cloudru::{*, obs::*};
-use crate::Config;
+use cloudru::{obs::ListBucketContents, *};
 
 #[derive(Args, Debug)]
 pub struct Obs {
-    #[clap(short='e', long)]
-    obs_endpoint: Option<String>,
-
     #[clap(subcommand)]
     obs_command: ObsCommand
 }
-
 
 #[derive(Subcommand, Debug)]
 enum ObsCommand {
@@ -82,17 +77,14 @@ fn test_force_file_name() {
 }
 
 
-pub fn handle_obs(aksk: AkSk, config: Config, obs: Obs) -> Result<JsonValue> {
-    let endpoint = config.endpoint.resolve(config::svc_id::obs, obs.obs_endpoint.as_deref())?
-        .to_string();
-
+pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
     match obs.obs_command {
         ObsCommand::Get(get) => {
             let (bucket_name, source_path) = split_bucket(&get.remote);
             let target_path = force_file_name(
                 get.local.as_ref().map(|x| x as &str).unwrap_or(""),
                 source_path)?;
-            let bucket = Bucket::new(bucket_name.to_owned(), endpoint, aksk)?;
+            let bucket = client.bucket(bucket_name.to_owned())?;
             let mut output_file = std::fs::OpenOptions::new().create(true).truncate(true).write(true).open(&target_path)?;
             bucket.get_object(source_path, &mut output_file)?;
             Ok(JsonValue::Bool(true))
@@ -101,15 +93,18 @@ pub fn handle_obs(aksk: AkSk, config: Config, obs: Obs) -> Result<JsonValue> {
             let (bucket_name, target_path) = split_bucket(&put.remote);
             let source_path = put.local;
             let target_path = force_file_name(target_path, &source_path)?;
-            let bucket = Bucket::new(bucket_name.to_owned(), endpoint, aksk)?;
+            let bucket = client.bucket(bucket_name.to_owned())?;
             let input_file = std::fs::File::open(&source_path)?;
             bucket.put_object(&target_path, input_file)?;
             Ok(JsonValue::Bool(true))
         }
         ObsCommand::Ls(ls) => {
             let (bucket_name, bucket_path) = split_bucket(&ls.remote);
-            let bucket = Bucket::new(bucket_name.to_owned(), endpoint, aksk)?;
-            bucket.list(Some(bucket_path))?;
+            let bucket = client.bucket(bucket_name.to_owned())?;
+            let list = bucket.list(Some(bucket_path))?;
+            for ListBucketContents { key, last_modified, etag, size, storage_class } in list.contents {
+                println!("{etag}\t{storage_class}\t{size}\t{last_modified}\t{key}")
+            }
             Ok(JsonValue::Bool(true))
         }
     }

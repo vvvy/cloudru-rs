@@ -3,6 +3,23 @@ use crate::*;
 
 pub mod apdu;
 
+pub struct FgClient {
+    endpoint: String,
+    project_id: String,
+    aksk: AkSk,
+}
+
+impl FgClient {
+    pub fn new(endpoint: String, project_id: String, aksk: AkSk) -> Self { Self { endpoint, project_id, aksk } }
+    pub fn logging_to_lts_enable(&self) -> Result<JsonValue> { 
+        logging_to_lts_enable(&self.endpoint, &self.project_id, &self.aksk) 
+    }
+    pub fn logging_to_lts_detail(&self, urn: &str) -> Result<JsonValue> {
+        logging_to_lts_detail(&self.endpoint, &self.project_id, urn, &self.aksk)
+    }
+}
+
+
 pub fn logging_to_lts_enable(
     fg_endpoint: &str,
     project_id: &str,

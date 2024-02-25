@@ -1,6 +1,6 @@
 
 use clap::{Subcommand, Args};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use cloudru::*;
 
 #[derive(Args, Debug)]
@@ -17,26 +17,17 @@ enum FgCommand {
 
 #[derive(Args, Debug)]
 pub struct Fg {
-    #[clap(short='e', long)]
-    fg_endpoint: Option<String>,
-
-    #[clap(short='p', long)]
-    fg_project_id: Option<String>,
-
     #[clap(subcommand)]
     fg_command: FgCommand
 }
 
-pub fn handle_fg(aksk: AkSk, config: Config, fg: Fg) -> Result<JsonValue> {
-    let endpoint = config.endpoint.resolve(config::svc_id::fg, fg.fg_endpoint.as_deref())?;
-    let project_id = fg.fg_project_id.or(config.project_id).ok_or(anyhow!("missing setting: fg_project_id"))?;
-
+pub fn handle_fg(client: fg::FgClient, fg: Fg) -> Result<JsonValue> {
     Ok(match fg.fg_command {
         FgCommand::EnableLtsLogs => {
-            cloudru::fg::logging_to_lts_enable(endpoint, &project_id, &aksk).cx("logging_to_lts_enable")
+            client.logging_to_lts_enable().cx("logging_to_lts_enable")
         }
         FgCommand::LtsLogDetails(LtsLogDetails{urn}) => {
-            cloudru::fg::logging_to_lts_detail(endpoint, &project_id, &urn, &aksk).cx("logging_to_lts_detail")
+            client.logging_to_lts_detail(&urn).cx("logging_to_lts_detail")
         }
     }?)
 }

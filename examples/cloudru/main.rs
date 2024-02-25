@@ -27,16 +27,24 @@ struct Cli {
     command: Command,
 
     ///Full path to the config file
-    #[clap(short='C', long, default_value=DEFAULT_CONFIG_FILE)]
-    config_file: String,
+    #[clap(short='C', long)]
+    config_file: Option<String>,
 
     ///Full path to the credentials file to take ak/sk from
-    #[clap(short='F', long, default_value=DEFAULT_CREDENTIALS_FILE)]
-    credentials_file: String,
+    #[clap(short='F', long)]
+    credentials_file: Option<String>,
 
     ///Id of the credential to use (within the credentials file)
-    #[clap(short='I', long, default_value=DEFAULT_CREDENTIAL)]
-    credential_id: String,
+    #[clap(short='I', long)]
+    credential_id: Option<String>,
+
+    ///Project id
+    #[clap(short='P', long)]
+    project_id: Option<String>,
+
+    ///Region id
+    #[clap(short='R', long)]
+    region: Option<String>,
 
     #[clap(short='L', long, default_value=DEFAULT_LOG_LEVEL)]
     level: Level
@@ -46,9 +54,6 @@ struct Cli {
 fn main() -> Result<()> {
 
     let args = Cli::parse();
-    //println!("Hello, world: {:?}", args);
-    let config = read_config(args.config_file)?;
-    let aksk = read_credentials(args.credentials_file, args.credential_id)?;
 
     let subscriber = FmtSubscriber::builder()
         .with_max_level(args.level)
@@ -58,10 +63,20 @@ fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber)
         .expect("setting default subscriber failed");
 
+    let client_builder: ClientBuilder = ClientBuilder { 
+        config_file: args.config_file,
+        credentials_file: args.credentials_file,
+        credentials_id: args.credential_id,
+        project_id: args.project_id,
+        region: args.region,
+        ..ClientBuilder::new() };
+
+    let client = client_builder.build()?;
+
     let rv = match args.command {
-        Command::Apig(apig) => handle_apig(aksk, config, apig)?,
-        Command::Fg(fg) => handle_fg(aksk, config, fg)?,
-        Command::Obs(obs) => handle_obs(aksk, config, obs)?,
+        Command::Apig(apig) => handle_apig(client.apig()?, apig)?,
+        Command::Fg(fg) => handle_fg(client.fg()?, fg)?,
+        Command::Obs(obs) => handle_obs(client.obs()?, obs)?,
     };
 
     cloudru::json_to_writer_pretty(std::io::stdout(), &rv)?;

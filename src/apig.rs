@@ -1,6 +1,47 @@
 use serde_derive::Serialize;
 use crate::*;
 
+pub struct ApigClient {
+    endpoint: String,
+    aksk: AkSk,
+}
+
+impl ApigClient {
+    pub fn new(endpoint: String, aksk: AkSk) -> Self { Self { endpoint, aksk } }
+    #[inline]
+    pub fn add_certificate(&self, 
+        group_id: &str, 
+        domain_id: &str,
+        cert_name: &str,
+        cert_content: &str,
+        private_key: &str,
+    ) -> Result<JsonValue> {
+        add_certificate(&self.endpoint, group_id, domain_id, cert_name, cert_content, private_key, &self.aksk)
+    }
+
+    pub fn get_certificate(&self,
+        group_id: &str, 
+        domain_id: &str,
+        cert_id: &str,
+    ) -> Result<JsonValue> {
+        get_certificate(&self.endpoint, group_id, domain_id, cert_id, &self.aksk)
+    }
+    
+    pub fn delete_certificate(&self,
+        group_id: &str, 
+        domain_id: &str,
+        cert_id: &str,
+    ) -> Result<JsonValue> {
+        delete_certificate(&self.endpoint, group_id, domain_id, cert_id, &self.aksk)
+    }
+    
+    pub fn get_api_group_detail(&self, group_id: &str)  -> Result<JsonValue> {       
+        get_api_group_detail(&self.endpoint, group_id, &self.aksk)
+    }
+    
+}
+
+
 #[derive(Serialize)]
 pub struct CertApdu<'t> {
     name: &'t str,
