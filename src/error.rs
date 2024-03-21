@@ -130,7 +130,7 @@ impl<T, E> Cx<T> for Result<T, E> where CloudRuError: From<E>   {
     }
 }
 
-fn __test_as_error(e: Box<CloudRuError>) -> Box<dyn std::error::Error> {
+fn __test_as_error(e: Box<CloudRuError>) -> Box<dyn std::error::Error + Send + Sync> {
     e
 }
 

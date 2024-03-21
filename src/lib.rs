@@ -19,5 +19,6 @@ pub use serde_json::Value as JsonValue;
 pub use serde_json::to_writer_pretty as json_to_writer_pretty;
 pub use config::Config;
 pub use client::{Client, ClientBuilder};
+pub use reqwest::blocking::Client as HttpClient;
 
 pub type Result<T> = std::result::Result<T, CloudRuError>;

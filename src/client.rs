@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use reqwest::blocking::Client as HttpClient;
+
 use crate::{Result, AkSk};
 use crate::config::*;
 
@@ -6,6 +10,7 @@ pub type ServiceId = &'static str;
 pub struct Client {
     config: Config,
     aksk: AkSk,
+    http_client: Arc<HttpClient>,
 }
 
 impl Client {
@@ -23,17 +28,20 @@ impl Client {
         }
     }
     pub fn obs(&self) -> Result<crate::obs::ObsClient> { Ok(crate::obs::ObsClient::new(
-        self.resolve_endpoint(svc_id::obs)?, 
-        self.aksk.clone()))
+        self.resolve_endpoint(svc_id::obs)?,
+        self.aksk.clone(),
+        self.http_client.clone()))
     }
     pub fn apig(&self) -> Result<crate::apig::ApigClient> { Ok(crate::apig::ApigClient::new(
         self.resolve_endpoint(svc_id::apig)?, 
-        self.aksk.clone()))
+        self.aksk.clone(),
+        self.http_client.clone()))
     }
     pub fn fg(&self) -> Result<crate::fg::FgClient> { Ok(crate::fg::FgClient::new(
         self.resolve_endpoint(svc_id::fg)?,
         self.resolve_project_id()?,
-        self.aksk.clone()))
+        self.aksk.clone(),
+        self.http_client.clone()))
     }
 }
 
@@ -74,7 +82,9 @@ impl ClientBuilder {
             )?
         };
 
-        Ok(Client { config, aksk })
+        let http_client = Arc::new(HttpClient::new());
+
+        Ok(Client { config, aksk, http_client })
     }
 
 }

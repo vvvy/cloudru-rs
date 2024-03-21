@@ -1,6 +1,6 @@
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::{io::{self, Read, Seek, SeekFrom, Write}, sync::Arc};
 use crate::*;
-use reqwest::{Url, blocking::{Request, Client, Body, RequestBuilder}, Method, header::HeaderValue};
+use reqwest::{Url, blocking::{Request, Client as HttpClient, Body, RequestBuilder}, Method, header::HeaderValue};
 use error::ParameterKind;
 use mauth_obs::*;
 use serde_derive::Deserialize;
@@ -12,11 +12,18 @@ use CloudRuError;
 pub struct ObsClient {
     endpoint: String,
     aksk: AkSk,
+    http_client: Arc<HttpClient>,
 }
 
 impl ObsClient {
-    pub fn new(endpoint: String, aksk: AkSk) -> Self { Self { endpoint, aksk } }
-    pub fn bucket(&self, bucket_name: String) -> Result<Bucket> { Bucket::new(bucket_name, self.endpoint.clone(), self.aksk.clone()) }
+    pub fn new(endpoint: String, aksk: AkSk, http_client: Arc<HttpClient>) -> Self { Self { endpoint, http_client, aksk } }
+    pub fn bucket(&self, bucket_name: String) -> Result<Bucket> { 
+        Bucket::new(
+            bucket_name, 
+            self.endpoint.clone(), 
+            self.aksk.clone(), 
+            self.http_client.clone()
+        ) }
 }
 
 #[derive(Debug, Clone)]
@@ -24,7 +31,8 @@ pub struct Bucket {
     bucket_name: String,
     bucket_url: Url,
     host: HeaderValue,
-    aksk: AkSk
+    aksk: AkSk,
+    http_client: Arc<HttpClient>,
 }
 
 trait Signer {
@@ -132,14 +140,14 @@ macro_rules! bail_on_failure {
 
 
 impl Bucket {
-    pub fn new(bucket_name: String, obs_endpoint: String, aksk: AkSk) -> Result<Self> {
+    pub fn new(bucket_name: String, obs_endpoint: String, aksk: AkSk, http_client: Arc<HttpClient>) -> Result<Self> {
         let mut bucket_url: Url = obs_endpoint.parse()?;
         let bucket_host = bucket_url.host()
             .ok_or(CloudRuInnerError::Parameter(ParameterKind::S3BucketUrl))?;
         let host = format!("{}.{}", bucket_name, bucket_host);
         bucket_url.set_host(Some(&host))?;
         let host = host.parse()?;
-        Ok(Self { bucket_name, bucket_url, host, aksk })
+        Ok(Self { bucket_name, bucket_url, host, aksk, http_client })
     }
 
     #[inline]
@@ -157,19 +165,19 @@ impl Bucket {
     #[instrument]
     pub fn list(&self, prefix: Option<&str>) -> Result<ListBucketResult> {
         
-        let client = Client::new();
+        //let client = Client::new();
 
         let url = self.url("/")
             .with_var("list-type", "2")
             .with_var_opt("prefix", prefix);
 
-        let request = client.request(Method::GET, url)
+        let request = self.http_client.request(Method::GET, url)
             .header("host", self.host.clone())
             .timestamp_and_sign(&self.bucket_name, &self.aksk)?;
 
         debug!(request_full=?request);
 
-        let result = client.execute(request)?;
+        let result = self.http_client.execute(request)?;
         bail_on_failure!(result);
 
         let p: ListBucketResult = if enabled!(Level::DEBUG) {
@@ -193,15 +201,13 @@ impl Bucket {
 
     /// get object at `remote_path` and write its data to `w`
     pub fn get_object<W: Write>(&self, remote_path: impl AsRef<str>, w: &mut W) -> Result<()> {
-        let client = Client::new();
-
-        let request = client.request(Method::GET, self.url(remote_path));
+        let request = self.http_client.request(Method::GET, self.url(remote_path));
         let request: RequestBuilder = self.start_request(request);
         let request = self.sign_request(request)?;
 
         debug!(request_full=?request);
 
-        let mut result = client.execute(request)?;
+        let mut result = self.http_client.execute(request)?;
         bail_on_failure!(result);
         
         result.copy_to(w)?;
@@ -210,16 +216,14 @@ impl Bucket {
 
     /// put object at `remote_path` filling it with data read from `input`
     pub fn put_object<I>(&self, remote_path: impl AsRef<str>, input: I) -> Result<()> where Body: From<I> {
-        let client = Client::new();
-
-        let request = client.request(Method::PUT, self.url(remote_path));
+        let request = self.http_client.request(Method::PUT, self.url(remote_path));
         let request: RequestBuilder = self.start_request(request);
         let request = request.body(input);
         let request = self.sign_request(request)?;
 
         debug!(request_full=?request);
 
-        let result = client.execute(request)?;
+        let result = self.http_client.execute(request)?;
         bail_on_failure!(result);
 
         Ok(())
@@ -227,15 +231,13 @@ impl Bucket {
 
     /// delete object at `remote_path`
     pub fn delete_object(&self, remote_path: impl AsRef<str>) -> Result<()> {
-        let client = Client::new();
-
-        let request = client.request(Method::DELETE, self.url(remote_path));
+        let request = self.http_client.request(Method::DELETE, self.url(remote_path));
         let request: RequestBuilder = self.start_request(request);
         let request = self.sign_request(request)?;
 
         debug!(request_full=?request);
 
-        let result = client.execute(request)?;
+        let result = self.http_client.execute(request)?;
         bail_on_failure!(result);
 
         Ok(())
@@ -243,9 +245,7 @@ impl Bucket {
 
     /// copy object from `source_bucket`:`source_path` to `remote_path`
     pub fn copy_object(&self, remote_path: impl AsRef<str>, source_bucket: impl AsRef<str>, source_path: impl AsRef<str>,) -> Result<()> {
-        let client = Client::new();
-
-        let request = client.request(Method::PUT, self.url(remote_path));
+        let request = self.http_client.request(Method::PUT, self.url(remote_path));
         let request: RequestBuilder = self.start_request(request);
         let request = request.header(
             "x-obs-copy-source", 
@@ -255,7 +255,7 @@ impl Bucket {
 
         debug!(request_full=?request);
 
-        let result = client.execute(request)?;
+        let result = self.http_client.execute(request)?;
         bail_on_failure!(result);
 
         Ok(())
@@ -264,15 +264,13 @@ impl Bucket {
     /// get object's metadata
     /// @see https://support.hc.sbercloud.ru/api/obs/obs_04_0084.html
     pub fn get_object_meta(&self, remote_path: impl AsRef<str>) -> Result<ObjectMeta> {
-        let client = Client::new();
-
-        let request = client.request(Method::HEAD, self.url(remote_path));
+        let request = self.http_client.request(Method::HEAD, self.url(remote_path));
         let request: RequestBuilder = self.start_request(request);
         let request = self.sign_request(request)?;
 
         debug!(request_full=?request);
 
-        let result = client.execute(request)?;
+        let result = self.http_client.execute(request)?;
         bail_on_failure!(result);
 
         let content_length = result.headers().get("content-length")
@@ -298,7 +296,7 @@ impl Bucket {
         ))?;
 
         let bucket = self.clone();
-        let client = Client::new();
+        let client = self.http_client.clone();
         
         let pos = 0;
          
@@ -310,7 +308,7 @@ impl Bucket {
     pub fn object_writer(&self, remote_path: impl AsRef<str>) -> Result<ObjectWriter> {
         let remote_path = remote_path.as_ref().to_string();
         let bucket = self.clone();
-        let client = Client::new();
+        let client = self.http_client.clone();
         let pos = 0;
          
         Ok(ObjectWriter { remote_path, bucket, client, pos })
@@ -332,7 +330,7 @@ pub struct ObjectMeta {
 pub struct ObjectReader {
     remote_path: String,
     bucket: Bucket,
-    client: Client,
+    client: Arc<HttpClient>,
     metadata: ObjectMeta,
     len: u64,
     pos: u64,
@@ -400,7 +398,7 @@ impl Seek for ObjectReader {
 pub struct ObjectWriter {
     remote_path: String,
     bucket: Bucket,
-    client: Client,
+    client: Arc<HttpClient>,
     pos: u64,
 }
 
