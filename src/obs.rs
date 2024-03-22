@@ -105,11 +105,11 @@ pub struct ListBucketResult {
     #[serde(rename="Prefix")]
     pub prefix: String,
     #[serde(rename="KeyCount")]
-    pub key_count: u64,
+    pub key_count: Option<u64>,
     #[serde(rename="MaxKeys")]
-    pub max_keys: u64,
+    pub max_keys: Option<u64>,
     #[serde(rename="IsTruncated")]
-    pub is_truncated: bool,
+    pub is_truncated: Option<bool>,
     #[serde(rename="Contents")]
     pub contents: Vec<ListBucketContents>,
 }
