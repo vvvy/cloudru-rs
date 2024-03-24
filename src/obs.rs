@@ -49,20 +49,20 @@ impl Signer for RequestBuilder {
 }
 
 trait WithVar {
-    fn with_var<T: AsRef<str> + ?Sized>(self, var: &str, val: &T) -> Url;
-    fn with_var_opt<T: AsRef<str> + ?Sized>(self, var: &str, val: Option<&T>) -> Url;
+    fn with_var<T: AsRef<str>>(self, var: &str, val: T) -> Url;
+    fn with_var_opt<T: AsRef<str>>(self, var: &str, val: Option<T>) -> Url;
     fn with_var_key(self, var: &str) -> Url;
 }
 
 impl WithVar for Url {
-    fn with_var_opt<T: AsRef<str> + ?Sized>(mut self, var: &str, val: Option<&T>) -> Url {
+    fn with_var_opt<T: AsRef<str>>(mut self, var: &str, val: Option<T>) -> Url {
         if let Some(val) = val {
             self.query_pairs_mut().append_pair(var, val.as_ref());
         }
         self
     }
 
-    fn with_var<T: AsRef<str> + ?Sized>(mut self, var: &str, val: &T) -> Url {
+    fn with_var<T: AsRef<str>>(mut self, var: &str, val: T) -> Url {
         self.query_pairs_mut().append_pair(var, val.as_ref());
         self
     }
@@ -72,6 +72,16 @@ impl WithVar for Url {
         self
     }
 
+}
+
+#[derive(Debug, Default)]
+pub struct ListBucketRequest<'t> {
+    pub prefix: Option<&'t str>,
+    pub marker: Option<&'t str>,
+    pub max_keys: Option<u32>,
+    pub delimiter: Option<&'t str>,
+    pub key_marker: Option<&'t str>,
+    pub version_id_marker: Option<&'t str>,
 }
 
 /*
@@ -102,14 +112,31 @@ impl WithVar for Url {
 pub struct ListBucketResult {
     #[serde(rename="Name")]
     pub name: String,
+    
     #[serde(rename="Prefix")]
     pub prefix: String,
+    
     #[serde(rename="KeyCount")]
     pub key_count: Option<u64>,
+    
     #[serde(rename="MaxKeys")]
     pub max_keys: Option<u64>,
+
     #[serde(rename="IsTruncated")]
     pub is_truncated: Option<bool>,
+
+    #[serde(rename="Delimiter")]
+    pub delimeter: Option<String>,
+
+    #[serde(rename="Marker")]
+    pub marker: Option<String>,
+
+    #[serde(rename="NextMarker")]
+    pub next_marker: Option<String>,
+
+    //#[serde(rename="CommonPrefixes")]
+    //pub common_prefixes: Option<String>,
+
     #[serde(rename="Contents")]
     pub contents: Vec<ListBucketContents>,
 }
@@ -118,15 +145,35 @@ pub struct ListBucketResult {
 pub struct ListBucketContents {
     #[serde(rename="Key")]
     pub key: String,
+
     #[serde(rename="LastModified")]
     pub last_modified: String,
+    
     #[serde(rename="ETag")]
     pub etag: String,
+    
+    #[serde(rename="Type")]
+    pub type_: Option<String>,
+    
     #[serde(rename="Size")]
     pub size: u64,
+    
     #[serde(rename="StorageClass")]
     pub storage_class: String,
+
+    #[serde(rename="Owner")]
+    pub owner: Option<Owner>,
 }
+
+#[derive(Deserialize, Debug)]
+pub struct Owner {
+    #[serde(rename="ID")]
+    pub id: String,
+
+    #[serde(rename="DisplayName")]
+    pub display_name: Option<String>,
+}
+
 
 macro_rules! bail_on_failure {
     ($result:expr) => {
@@ -163,13 +210,16 @@ impl Bucket {
     }
 
     #[instrument]
-    pub fn list(&self, prefix: Option<&str>) -> Result<ListBucketResult> {
+    pub fn list_objects(&self, request: ListBucketRequest<'_>) -> Result<ListBucketResult> {
         
-        //let client = Client::new();
-
         let url = self.url("/")
-            .with_var("list-type", "2")
-            .with_var_opt("prefix", prefix);
+            .with_var_opt("prefix", request.prefix)
+            .with_var_opt("marker", request.marker)
+            .with_var_opt("max_keys", request.max_keys.map(|s| format!("{s}")))
+            .with_var_opt("delimiter", request.delimiter)
+            .with_var_opt("key_marker", request.key_marker)
+            .with_var_opt("version_id_marker", request.version_id_marker)
+            ;
 
         let request = self.http_client.request(Method::GET, url)
             .header("host", self.host.clone())
@@ -189,6 +239,10 @@ impl Bucket {
         };
         Ok(p)
 
+    }
+
+    pub fn list(&self, prefix: Option<&str>) -> Result<ListBucketResult> {
+        self.list_objects(ListBucketRequest { prefix, ..Default::default() })
     }
 
     fn start_request(&self, request: RequestBuilder) -> RequestBuilder {

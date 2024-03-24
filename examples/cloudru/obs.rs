@@ -1,6 +1,6 @@
 use clap::{Subcommand, Args};
 use anyhow::{Result, anyhow};
-use cloudru::{obs::ListBucketContents, *};
+use cloudru::{obs::{ListBucketContents, ListBucketRequest}, *};
 
 #[derive(Args, Debug)]
 pub struct Obs {
@@ -29,7 +29,16 @@ struct ObsPut {
 
 #[derive(Args, Debug)]
 struct ObsLs {
-    remote: String, 
+    remote: String,
+
+    #[clap(long, short)]
+    long: bool,
+
+    #[clap(long, short)]
+    marker: Option<String>,
+
+    #[clap(long, short='n')]
+    max_keys: Option<u32>,
 }
 
 /// Returns bucket name and remaining path without leading '/'
@@ -101,9 +110,25 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
         ObsCommand::Ls(ls) => {
             let (bucket_name, bucket_path) = split_bucket(&ls.remote);
             let bucket = client.bucket(bucket_name.to_owned())?;
-            let list = bucket.list(Some(bucket_path))?;
-            for ListBucketContents { key, last_modified, etag, size, storage_class } in list.contents {
-                println!("{etag}\t{storage_class}\t{size}\t{last_modified}\t{key}")
+
+            let list_request = ListBucketRequest {
+                prefix: Some(bucket_path),
+                marker: ls.marker.as_deref(),
+                max_keys: ls.max_keys,
+                ..Default::default()
+            };
+            let list = bucket.list_objects(list_request)?;
+            for ListBucketContents { key, last_modified, etag, size, storage_class, type_, owner } in list.contents {
+                let type_ = type_.as_deref().unwrap_or("-");
+                let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
+                if ls.long {
+                    println!("{etag}\t{storage_class}\t{owner}\t{type_}\t{size}\t{last_modified}\t{key}")
+                } else {
+                    println!("{type_}\t{size}\t{last_modified}\t{key}")
+                }
+            }
+            if let Some(next_marker) = list.next_marker {
+                println!("next_marker: {next_marker}")
             }
             Ok(JsonValue::Bool(true))
         }
