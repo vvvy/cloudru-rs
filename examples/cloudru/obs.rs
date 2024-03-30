@@ -1,6 +1,6 @@
 use clap::{Subcommand, Args};
 use anyhow::{Result, anyhow};
-use cloudru::{obs::{ListBucketContents, ListBucketRequest}, *};
+use cloudru::{*, blocking::{*, obs::{ListBucketContents, ListBucketRequest}}};
 
 #[derive(Args, Debug)]
 pub struct Obs {

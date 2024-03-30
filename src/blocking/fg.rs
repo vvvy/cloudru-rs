@@ -1,9 +1,10 @@
 //!Function Graph-related api
 use std::sync::Arc;
 
+use super::*;
 use crate::*;
 
-pub mod apdu;
+pub use crate::model::fg as model;
 
 pub struct FgClient {
     endpoint: String,

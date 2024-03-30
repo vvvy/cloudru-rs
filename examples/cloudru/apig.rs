@@ -2,7 +2,7 @@ use std::fs::read_to_string;
 use clap::{Subcommand, Args};
 use anyhow::Result;
 
-use cloudru::{*, apig::ApigClient};
+use cloudru::{*, blocking::apig::ApigClient};
 
 
 #[derive(Args, Debug)]

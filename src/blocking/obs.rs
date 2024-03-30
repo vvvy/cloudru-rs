@@ -1,12 +1,16 @@
 use std::{io::{self, Read, Seek, SeekFrom, Write}, sync::Arc};
-use crate::*;
-use reqwest::{Url, blocking::{Request, Client as HttpClient, Body, RequestBuilder}, Method, header::HeaderValue};
-use error::ParameterKind;
-use mauth_obs::*;
-use serde_derive::Deserialize;
+use reqwest::{blocking::{Body, Request, RequestBuilder}, header::{HeaderMap, HeaderValue}, Method, Url};
 use tracing::{debug, instrument, Level, enabled};
+
+use crate::shared::mauth_obs::*;
+use error::ParameterKind;
 use CloudRuInnerError;
 use CloudRuError;
+
+pub use crate::model::obs::*;
+use crate::shared::urltools::*;
+use super::*;
+use crate::*;
 
 
 pub struct ObsClient {
@@ -35,6 +39,15 @@ pub struct Bucket {
     http_client: Arc<HttpClient>,
 }
 
+struct R<'r> { r: &'r mut Request }
+impl<'r> RequestW for R<'r> {
+    fn method(&self) -> &Method { self.r.method() }
+    fn headers(&self) -> &HeaderMap { self.r.headers() }
+    fn headers_mut(&mut self) -> &mut HeaderMap { self.r.headers_mut() }
+    fn url(&self) -> &Url { self.r.url() }
+}
+
+
 trait Signer {
     fn timestamp_and_sign(self, bucket_name: &str, aksk: &AkSk) -> Result<Request>;
 }
@@ -43,137 +56,10 @@ impl Signer for RequestBuilder {
     fn timestamp_and_sign(self, bucket_name: &str, aksk: &AkSk) -> Result<Request> {
         let mut request = self.build()?;
         let dt = time::OffsetDateTime::now_utc();
-        time_stamp_and_sign(bucket_name, &mut request, dt, &aksk.ak, &aksk.sk)?;
+        time_stamp_and_sign(bucket_name, &mut R { r: &mut request }, dt, &aksk.ak, &aksk.sk)?;
         Ok(request)
     }
 }
-
-trait WithVar {
-    fn with_var<T: AsRef<str>>(self, var: &str, val: T) -> Url;
-    fn with_var_opt<T: AsRef<str>>(self, var: &str, val: Option<T>) -> Url;
-    fn with_var_key(self, var: &str) -> Url;
-}
-
-impl WithVar for Url {
-    fn with_var_opt<T: AsRef<str>>(mut self, var: &str, val: Option<T>) -> Url {
-        if let Some(val) = val {
-            self.query_pairs_mut().append_pair(var, val.as_ref());
-        }
-        self
-    }
-
-    fn with_var<T: AsRef<str>>(mut self, var: &str, val: T) -> Url {
-        self.query_pairs_mut().append_pair(var, val.as_ref());
-        self
-    }
-
-    fn with_var_key(mut self, var: &str) -> Url {
-        self.query_pairs_mut().append_key_only(var);
-        self
-    }
-
-}
-
-#[derive(Debug, Default)]
-pub struct ListBucketRequest<'t> {
-    pub prefix: Option<&'t str>,
-    pub marker: Option<&'t str>,
-    pub max_keys: Option<u32>,
-    pub delimiter: Option<&'t str>,
-    pub key_marker: Option<&'t str>,
-    pub version_id_marker: Option<&'t str>,
-}
-
-/*
-<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<ListBucketResult xmlns=\"http://obs.hc.sbercloud.ru/doc/2015-06-30/\">
-    <Name>rust-api-test</Name>
-    <Prefix></Prefix>
-    <KeyCount>2</KeyCount>
-    <MaxKeys>1000</MaxKeys>
-    <IsTruncated>false</IsTruncated>
-    <Contents>
-        <Key>test.txt</Key>
-        <LastModified>2023-08-20T11:04:49.119Z</LastModified>
-        <ETag>\"bf0b7283b196369ba8723a79750d937b\"</ETag>
-        <Size>35</Size>
-        <StorageClass>STANDARD</StorageClass>
-    </Contents>
-    <Contents>
-        <Key>test2.txt</Key>
-        <LastModified>2023-08-20T11:04:49.250Z</LastModified>
-        <ETag>\"bf0b7283b196369ba8723a79750d937b\"</ETag>
-        <Size>35</Size>
-        <StorageClass>STANDARD</StorageClass>
-    </Contents>
-</ListBucketResult>
-*/
-#[derive(Deserialize, Debug)]
-pub struct ListBucketResult {
-    #[serde(rename="Name")]
-    pub name: String,
-    
-    #[serde(rename="Prefix")]
-    pub prefix: String,
-    
-    #[serde(rename="KeyCount")]
-    pub key_count: Option<u64>,
-    
-    #[serde(rename="MaxKeys")]
-    pub max_keys: Option<u64>,
-
-    #[serde(rename="IsTruncated")]
-    pub is_truncated: Option<bool>,
-
-    #[serde(rename="Delimiter")]
-    pub delimeter: Option<String>,
-
-    #[serde(rename="Marker")]
-    pub marker: Option<String>,
-
-    #[serde(rename="NextMarker")]
-    pub next_marker: Option<String>,
-
-    //#[serde(rename="CommonPrefixes")]
-    //pub common_prefixes: Option<String>,
-
-    #[serde(rename="Contents")]
-    pub contents: Option<Vec<ListBucketContents>>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ListBucketContents {
-    #[serde(rename="Key")]
-    pub key: String,
-
-    #[serde(rename="LastModified")]
-    pub last_modified: String,
-    
-    #[serde(rename="ETag")]
-    pub etag: String,
-    
-    #[serde(rename="Type")]
-    pub type_: Option<String>,
-    
-    #[serde(rename="Size")]
-    pub size: u64,
-    
-    #[serde(rename="StorageClass")]
-    pub storage_class: String,
-
-    #[serde(rename="Owner")]
-    pub owner: Option<Owner>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Owner {
-    #[serde(rename="ID")]
-    pub id: String,
-
-    #[serde(rename="DisplayName")]
-    pub display_name: Option<String>,
-}
-
 
 macro_rules! bail_on_failure {
     ($result:expr) => {
@@ -368,17 +254,6 @@ impl Bucket {
         Ok(ObjectWriter { remote_path, bucket, client, pos })
     }
 
-}
-
-
-/// Object metadata returned by [obs::Bucket::get_object_meta]
-pub struct ObjectMeta {
-    /// Length of the object in bytes as seen by OBS 
-    pub content_length: Option<u64>,
-    /// Type of the object's content
-    pub content_type: Option<String>,
-    /// Date the object was last modified, like "WED, 01 Jul 2015 01:19:21 GMT"
-    pub last_modified: Option<String>,
 }
 
 pub struct ObjectReader {

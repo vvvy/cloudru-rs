@@ -7,7 +7,7 @@ use anyhow::Result;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
-use cloudru::*;
+use cloudru::{*, blocking::*};
 
 use config::*;
 use apig::*;

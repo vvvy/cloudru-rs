@@ -1,7 +1,7 @@
 
 use clap::{Subcommand, Args};
 use anyhow::Result;
-use cloudru::*;
+use cloudru::{*, blocking::*};
 
 #[derive(Args, Debug)]
 struct LtsLogDetails {

@@ -1,49 +1,32 @@
-use std::sync::Arc;
+use super::config::*;
+use crate::*;
 
-use reqwest::blocking::Client as HttpClient;
+pub(crate) type ServiceId = &'static str;
 
-use crate::{Result, AkSk};
-use crate::config::*;
-
-pub type ServiceId = &'static str;
-
-pub struct Client {
-    config: Config,
-    aksk: AkSk,
-    http_client: Arc<HttpClient>,
+pub struct Client<HC> {
+    pub(crate) config: Config,
+    pub(crate) aksk: AkSk,
+    pub(crate) http_client: HC,
 }
 
-impl Client {
+impl<HC> Client<HC> {
     pub fn builder() -> ClientBuilder { ClientBuilder::new() }
+
     #[inline]
-    fn resolve_endpoint(&self, service_id: ServiceId) -> Result<String> {
+    pub(crate) fn resolve_endpoint(&self, service_id: ServiceId) -> Result<String> {
         Ok(self.config.endpoint.resolve(service_id, None)?.to_string())
     }
+
     #[inline]
-    fn resolve_project_id(&self) -> Result<String> {
+    pub(crate) fn resolve_project_id(&self) -> Result<String> {
         if let Some(project_id) = &self.config.project_id {
             Ok(project_id.clone())
         } else {
             Err(crate::error::CloudRuInnerError::MissingProjectId.into())
         }
     }
-    pub fn obs(&self) -> Result<crate::obs::ObsClient> { Ok(crate::obs::ObsClient::new(
-        self.resolve_endpoint(svc_id::obs)?,
-        self.aksk.clone(),
-        self.http_client.clone()))
-    }
-    pub fn apig(&self) -> Result<crate::apig::ApigClient> { Ok(crate::apig::ApigClient::new(
-        self.resolve_endpoint(svc_id::apig)?, 
-        self.aksk.clone(),
-        self.http_client.clone()))
-    }
-    pub fn fg(&self) -> Result<crate::fg::FgClient> { Ok(crate::fg::FgClient::new(
-        self.resolve_endpoint(svc_id::fg)?,
-        self.resolve_project_id()?,
-        self.aksk.clone(),
-        self.http_client.clone()))
-    }
 }
+
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientBuilder {
@@ -63,7 +46,7 @@ impl ClientBuilder {
     pub fn project_id(self, arg: &str) -> Self { Self { project_id: Some(arg.to_owned()), ..self } }
     pub fn region(self, arg: &str) -> Self { Self { region: Some(arg.to_owned()), ..self } }
     pub fn aksk(self, arg: AkSk) -> Self { Self { aksk: Some(arg), ..self } }
-    pub fn build(self) -> Result<Client> {
+    pub fn build_with_http_client<HC>(self, http_client: HC) -> Result<Client<HC>> {
         let (config_path, force) = self.config_file
             .map(|f| (f, true))
             .unwrap_or_else(|| (DEFAULT_CONFIG_FILE.to_owned(), false));
@@ -82,9 +65,6 @@ impl ClientBuilder {
             )?
         };
 
-        let http_client = Arc::new(HttpClient::new());
-
-        Ok(Client { config, aksk, http_client })
+        Ok(Client {config, aksk, http_client })
     }
-
 }

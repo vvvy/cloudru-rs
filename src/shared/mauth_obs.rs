@@ -1,9 +1,16 @@
 use hmac::{Hmac, Mac};
 use base64::{Engine as _, engine::general_purpose};
-use reqwest::blocking::Request;
+use reqwest::{header::HeaderMap, Method, Url};
 use phf::phf_set;
 use tracing::trace;
 use crate::*;
+
+pub trait RequestW {
+    fn method(&self) -> &Method;
+    fn headers(&self) -> &HeaderMap;
+    fn headers_mut(&mut self) -> &mut HeaderMap;
+    fn url(&self) -> &Url;
+}
 
 pub const STANDARD_DATE: &'static str = "date";
 
@@ -25,13 +32,13 @@ const SUBRESOURCES: phf::Set<&str> = phf_set!(
     "uploadId", "uploads", "versionId", "versioning", "versions", "website", 
     "x-obs-security-token");
 
-pub fn string_to_sign(bucket_name: &str, m: &Request) -> Result<String> {
+pub fn string_to_sign(bucket_name: &str, m: &dyn RequestW) -> Result<String> {
 /*  HTTP-Verb + "\n" + 
     Content-MD5 + "\n" + 
     Content-Type + "\n" + 
     Date + "\n" + 
     CanonicalizedHeaders + CanonicalizedResource */
-    fn get_hv<'t>(m: &'t Request, h: &str) -> Result<&'t str> {
+    fn get_hv<'t>(m: &'t dyn RequestW, h: &str) -> Result<&'t str> {
         Ok(match m.headers().get(h) { Some(hv) => hv.to_str()?, None => "" })
     }
 
@@ -68,7 +75,7 @@ pub fn signature(string_to_sign: &str, secret_key: &str) -> Result<String> {
     Ok(encoded)
 }
 
-pub fn time_stamp_and_sign(bucket_name: &str, r: &mut Request, dt: time::OffsetDateTime, ak: &str, sk: &str) -> Result<()> {
+pub fn time_stamp_and_sign(bucket_name: &str, r: &mut dyn RequestW, dt: time::OffsetDateTime, ak: &str, sk: &str) -> Result<()> {
     let hs = r.headers_mut();
 
     let dts = obs_date(dt)?;
@@ -88,6 +95,15 @@ pub fn time_stamp_and_sign(bucket_name: &str, r: &mut Request, dt: time::OffsetD
 
 #[test]
 fn test_string_to_sign() {
+    use reqwest::blocking::Request;
+    struct R { r: Request }
+    impl RequestW for R {
+        fn method(&self) -> &Method { self.r.method() }
+        fn headers(&self) -> &HeaderMap { self.r.headers() }
+        fn headers_mut(&mut self) -> &mut HeaderMap { self.r.headers_mut() }
+        fn url(&self) -> &Url { self.r.url() }
+    }
+
     macro_rules! req {
         ($meth:expr, $url:expr, $($h:expr => $v:expr),*) => { {
             let url = reqwest::Url::parse($url).unwrap();
@@ -95,7 +111,7 @@ fn test_string_to_sign() {
             $(
                 req.headers_mut().insert($h, $v.parse().unwrap());
             )*
-            req
+            R { r: req }
         } };
     }
 

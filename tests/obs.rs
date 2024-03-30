@@ -1,6 +1,8 @@
 use std::io::{Read, Write};
 
-use cloudru::{Client, Result, obs::Bucket};
+use cloudru::{*, blocking::{client::*, obs::Bucket}};
+
+
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 

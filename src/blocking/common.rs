@@ -1,32 +1,35 @@
 use tracing::debug;
-use crate::{Result, mauth, AkSk, CloudRuInnerError, HttpClient};
 use reqwest::{Method, blocking::Request};
+
+use super::mauth;
+use super::*;
+use crate::*;
 
 
 macro_rules! api_call {
     (GET $url:expr, $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call_noq(reqwest::Method::GET, $url, $aksk, $client) 
+        crate::blocking::common::auth_api_call_noq(reqwest::Method::GET, $url, $aksk, $client) 
     };
     (GET / $($url:tt),+ ; $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call_noq(reqwest::Method::GET, &format!($($url),+), $aksk, $client) 
+        crate::blocking::common::auth_api_call_noq(reqwest::Method::GET, &format!($($url),+), $aksk, $client) 
     };
     (POST $url:expr, $q:expr, $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call(reqwest::Method::POST, $url, $q, $aksk, $client) 
+        crate::blocking::common::auth_api_call(reqwest::Method::POST, $url, $q, $aksk, $client) 
     };
     (POST / $($url:tt),+ ; $q:expr, $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call(reqwest::Method::POST, &format!($($url),+), $q, $aksk, $client) 
+        crate::blocking::common::auth_api_call(reqwest::Method::POST, &format!($($url),+), $q, $aksk, $client) 
     };
     (POST $url:expr, $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call_noq(Method::POST, $url, $aksk, $client) 
+        crate::blocking::common::auth_api_call_noq(Method::POST, $url, $aksk, $client) 
     };
     (POST / $($url:tt),+ ; $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call_noq(reqwest::Method::POST, &format!($($url),+), $aksk, $client) 
+        crate::blocking::common::auth_api_call_noq(reqwest::Method::POST, &format!($($url),+), $aksk, $client) 
     };
     (DELETE $url:expr, $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call_noq(reqwest::Method::DELETE, $url, $aksk, $client) 
+        crate::blocking::common::auth_api_call_noq(reqwest::Method::DELETE, $url, $aksk, $client) 
     };
     (DELETE / $($url:tt),+ ; $aksk:expr, $client:expr) => { 
-        crate::common::auth_api_call_noq(reqwest::Method::DELETE, &format!($($url),+), $aksk, $client) 
+        crate::blocking::common::auth_api_call_noq(reqwest::Method::DELETE, &format!($($url),+), $aksk, $client) 
     };
 }
 
