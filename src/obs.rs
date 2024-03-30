@@ -138,7 +138,7 @@ pub struct ListBucketResult {
     //pub common_prefixes: Option<String>,
 
     #[serde(rename="Contents")]
-    pub contents: Vec<ListBucketContents>,
+    pub contents: Option<Vec<ListBucketContents>>,
 }
 
 #[derive(Deserialize, Debug)]

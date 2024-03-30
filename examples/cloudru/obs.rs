@@ -118,7 +118,8 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
                 ..Default::default()
             };
             let list = bucket.list_objects(list_request)?;
-            for ListBucketContents { key, last_modified, etag, size, storage_class, type_, owner } in list.contents {
+            let Some(contents) = list.contents else { return Ok(JsonValue::Bool(true)) };
+            for ListBucketContents { key, last_modified, etag, size, storage_class, type_, owner } in contents {
                 let type_ = type_.as_deref().unwrap_or("-");
                 let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
                 if ls.long {
