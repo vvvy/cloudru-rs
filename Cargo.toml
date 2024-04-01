@@ -23,6 +23,7 @@ tracing = "0.1.40"
 rust-ini = "0.18.0"
 #mitigating "political code" risks
 time = { version = "=0.3.7", features=["macros"]}
+bytes = "1.6.0"
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"

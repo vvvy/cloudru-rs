@@ -1,3 +1,7 @@
+use std::io;
+
+use bytes::Bytes;
+
 use tracing::{debug, instrument};
 use reqwest::{header::{HeaderMap, HeaderValue}, Body, Method, Request, RequestBuilder};
 use url::Url;
@@ -131,21 +135,22 @@ impl Bucket {
         request.timestamp_and_sign(&self.bucket_name, &self.aksk)
     }
 
-    /*
+
     /// get object at `remote_path`
-    pub async fn get_object(&self, remote_path: impl AsRef<str>) -> Result<Body> {
+    pub async fn get_object(&self, remote_path: impl AsRef<str>) -> Result<Bytes> {
         let request = self.http_client.request(Method::GET, self.url(remote_path));
         let request: RequestBuilder = self.start_request(request);
         let request = self.sign_request(request)?;
 
         debug!(request_full=?request);
 
-        let mut result = self.http_client.execute(request).await?;
+        let result = self.http_client.execute(request).await?;
         bail_on_failure!(result);
+        let rv = result.bytes().await?;
         
-        Ok(result.)
+        Ok(rv)
     }
-    */
+
 
     /// put object at `remote_path` filling it with data read from `input`
     pub async fn put_object<I>(&self, remote_path: impl AsRef<str>, input: I) -> Result<()> where Body: From<I> {
@@ -223,3 +228,97 @@ impl Bucket {
 }
 
 
+pub struct BucketAsyncIO {
+    remote_path: String,
+    bucket: Bucket,
+    pos: u64,
+    len: u64,    
+} 
+
+impl BucketAsyncIO {
+    /// Synchronizes cached position with the length of the actual object, so that we can resume appending to it.
+    /// The object must exist and must be created in append mode.
+    pub async fn sync_position(&mut self) -> Result<u64> {
+        let meta = self.bucket.get_object_meta(&self.remote_path).await?;
+        self.len = meta.content_length.ok_or_else(
+            || CloudRuError::new(CloudRuInnerError::UnknownObjectLength, self.remote_path.to_owned())
+        )?;
+        if self.pos > self.len { self.pos = self.len }
+        Ok(self.len)
+    }
+
+    pub async fn read_bucket(&mut self, len: usize) -> Result<Bytes> {
+        if len == 0 {
+            return Ok(Bytes::new())
+        }
+
+        let (first, last) = (self.pos, self.pos + len as u64 - 1);
+        let range = format!("bytes={first}-{last}");
+
+        let request = self.bucket.http_client.request(Method::GET, self.bucket.url(&self.remote_path));
+        let request: RequestBuilder = self.bucket.start_request(request);
+        let request = request.header("range", range);
+        let request = self.bucket.sign_request(request)?;
+    
+        debug!(request_full=?request);
+
+        let result = self.bucket.http_client.execute(request).await.cx("Client::execute")?;
+        if result.status().is_success() {
+            if result.status().as_u16() != 206 { //Partial content
+                return Err(CloudRuInnerError::ReturningRangesNotSupported.into())
+            }
+            let rv: Bytes = result.bytes().await?;
+            self.pos += rv.len() as u64;
+            Ok(rv)
+        } else {
+            Err(CloudRuInnerError::API(result.status(), result.text().await.cx("text")?).into())
+        }
+
+    }
+
+    pub async fn write_bucket(&mut self, data: Bytes) -> Result<usize> {
+        /*
+POST /ObjectName?append&position=Position HTTP/1.1 
+Host: bucketname.obs.region.example.com
+Content-Type: application/xml 
+Content-Length: length
+Authorization: authorization
+Date: date
+<Optional Additional Header> 
+<object Content>
+        */
+        let verb = if self.pos == self.len { "append" } else { "modify" };
+        let data_len = data.len();
+
+        let url = self.bucket.url(&self.remote_path)
+            .with_var_key(verb)
+            .with_var("position", &format!("{}", self.pos));
+
+        let request = self.bucket.http_client.request(Method::POST, url);
+        let request: RequestBuilder = self.bucket.start_request(request);
+        let request = request.body(data);
+        let request = self.bucket.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = self.bucket.http_client.execute(request).await.cx("Client::execute")?;
+        bail_on_failure!(result);
+        self.pos += data_len as u64;
+        if self.pos > self.len { self.len = self.pos }
+        Ok(data_len)
+    }
+}
+
+impl io::Seek for BucketAsyncIO {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.pos = match pos {
+            io::SeekFrom::Start(pos) =>
+                pos,
+            io::SeekFrom::Current(off) => 
+                self.pos.checked_add_signed(off).ok_or(io::Error::from(io::ErrorKind::InvalidInput))?,
+            io::SeekFrom::End(off) => 
+                self.len.checked_add_signed(off).ok_or(io::Error::from(io::ErrorKind::InvalidInput))?,
+        };
+        Ok(self.pos)
+    }
+}

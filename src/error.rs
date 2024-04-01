@@ -75,6 +75,9 @@ pub enum CloudRuInnerError {
     #[error("Missing project_id")]
     MissingProjectId,
 
+    #[error("Returning ranges not supported")]
+    ReturningRangesNotSupported,
+
     #[error("Other")]
     Other,
 }
