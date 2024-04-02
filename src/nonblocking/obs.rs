@@ -224,6 +224,28 @@ impl Bucket {
         Ok(ObjectMeta { content_length, content_type, last_modified })                
     }
 
+    /// create file-like IO object that track r/w position
+    pub async fn object_io(&self, remote_path: impl AsRef<str>) -> Result<BucketAsyncIO> {
+        let remote_path = remote_path.as_ref().to_string();
+
+        // yield 0 if it is 404 error
+        let len = match self.get_object_meta(&remote_path).await {
+            Ok(metadata) => metadata.content_length.ok_or_else(|| CloudRuError::new(
+                CloudRuInnerError::UnknownObjectLength, 
+                remote_path.clone()
+            ))?,
+            Err(e) => match e.inner_ref() {
+                CloudRuInnerError::API(n, _) if *n == 404 => Ok(0),
+                _ => Err(e),
+            }?
+        };
+
+        let bucket = self.clone();
+        let pos = 0;
+         
+        Ok(BucketAsyncIO { remote_path, bucket, pos, len })
+    }
+
 
 }
 
@@ -247,6 +269,10 @@ impl BucketAsyncIO {
         Ok(self.len)
     }
 
+    pub fn pos(&self) -> u64 { self.pos }
+    pub fn len(&self) -> u64 { self.len }
+
+    /// read `len` bytes from the bucket 
     pub async fn read_bucket(&mut self, len: usize) -> Result<Bytes> {
         if len == 0 {
             return Ok(Bytes::new())
@@ -276,6 +302,7 @@ impl BucketAsyncIO {
 
     }
 
+    /// write/append `data` to the bucket 
     pub async fn write_bucket(&mut self, data: Bytes) -> Result<usize> {
         /*
 POST /ObjectName?append&position=Position HTTP/1.1 
