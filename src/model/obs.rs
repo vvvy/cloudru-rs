@@ -102,6 +102,7 @@ pub struct Owner {
 
 
 /// Object metadata returned by [obs::Bucket::get_object_meta]
+#[derive(Debug)]
 pub struct ObjectMeta {
     /// Length of the object in bytes as seen by OBS 
     pub content_length: Option<u64>,

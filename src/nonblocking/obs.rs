@@ -320,7 +320,8 @@ Date: date
             .with_var_key(verb)
             .with_var("position", &format!("{}", self.pos));
 
-        let request = self.bucket.http_client.request(Method::POST, url);
+        let request = self.bucket.http_client.request(Method::POST, url)
+            .header("Content-Length", format!("{data_len}"));
         let request: RequestBuilder = self.bucket.start_request(request);
         let request = request.body(data);
         let request = self.bucket.sign_request(request)?;

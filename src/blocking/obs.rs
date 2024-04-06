@@ -358,7 +358,8 @@ Date: date
             .with_var_key("append")
             .with_var("position", &format!("{}", self.pos));
 
-        let request = self.client.request(Method::POST, url);
+        let request = self.client.request(Method::POST, url)
+            .header("Content-Length", format!("{}", buf.len()));
         let request: RequestBuilder = self.bucket.start_request(request);
         let request = request.body(Vec::from(buf));
         let request = self.bucket.sign_request(request)?;
