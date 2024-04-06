@@ -66,7 +66,7 @@ macro_rules! bail_on_failure {
         if !$result.status().is_success() {
             let status = $result.status();
             let err = $result.text().await.cx("error text in bail_on_failure")?;
-            return Err(CloudRuInnerError::API(status, err).into());
+            return Err(CloudRuError::API(status, err));
         }        
     };
 }
@@ -76,7 +76,7 @@ impl Bucket {
     pub fn new(bucket_name: String, obs_endpoint: String, aksk: AkSk, http_client: HttpClient) -> Result<Self> {
         let mut bucket_url: Url = obs_endpoint.parse()?;
         let bucket_host = bucket_url.host()
-            .ok_or(CloudRuInnerError::Parameter(ParameterKind::S3BucketUrl))?;
+            .ok_or(CloudRuError::Parameter(ParameterKind::S3BucketUrl))?;
         let host = format!("{}.{}", bucket_name, bucket_host);
         bucket_url.set_host(Some(&host))?;
         let host = host.parse()?;
@@ -230,12 +230,11 @@ impl Bucket {
 
         // yield 0 if it is 404 error
         let len = match self.get_object_meta(&remote_path).await {
-            Ok(metadata) => metadata.content_length.ok_or_else(|| CloudRuError::new(
-                CloudRuInnerError::UnknownObjectLength, 
-                remote_path.clone()
-            ))?,
-            Err(e) => match e.inner_ref() {
-                CloudRuInnerError::API(n, _) if *n == 404 => Ok(0),
+            Ok(metadata) => metadata.content_length.ok_or_else(
+                || CloudRuError::UnknownObjectLength(remote_path.clone())
+            )?,
+            Err(e) => match e {
+                CloudRuError::API(n, _) if n == 404 => Ok(0),
                 _ => Err(e),
             }?
         };
@@ -263,7 +262,7 @@ impl BucketAsyncIO {
     pub async fn sync_position(&mut self) -> Result<u64> {
         let meta = self.bucket.get_object_meta(&self.remote_path).await?;
         self.len = meta.content_length.ok_or_else(
-            || CloudRuError::new(CloudRuInnerError::UnknownObjectLength, self.remote_path.to_owned())
+            || CloudRuError::UnknownObjectLength(self.remote_path.clone())
         )?;
         if self.pos > self.len { self.pos = self.len }
         Ok(self.len)
@@ -291,13 +290,13 @@ impl BucketAsyncIO {
         let result = self.bucket.http_client.execute(request).await.cx("Client::execute")?;
         if result.status().is_success() {
             if result.status().as_u16() != 206 { //Partial content
-                return Err(CloudRuInnerError::ReturningRangesNotSupported.into())
+                return Err(CloudRuError::ReturningRangesNotSupported)
             }
             let rv: Bytes = result.bytes().await?;
             self.pos += rv.len() as u64;
             Ok(rv)
         } else {
-            Err(CloudRuInnerError::API(result.status(), result.text().await.cx("text")?).into())
+            Err(CloudRuError::API(result.status(), result.text().await.cx("text")?))
         }
 
     }

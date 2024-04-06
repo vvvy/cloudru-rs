@@ -22,7 +22,7 @@ impl<HC> Client<HC> {
         if let Some(project_id) = &self.config.project_id {
             Ok(project_id.clone())
         } else {
-            Err(crate::error::CloudRuInnerError::MissingProjectId.into())
+            Err(crate::error::CloudRuError::MissingProjectId)
         }
     }
 }

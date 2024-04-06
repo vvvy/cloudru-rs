@@ -35,7 +35,7 @@ impl Endpoint {
         if let Some(e) = endpoint { return Ok(e); }
         if let Some(e) = self.endpoint.get(service_id).map(|s| s.as_str()) { return Ok(e); }
         if let Some(e) = DEFAULT_ENDPOINTS.get(service_id).map(|&e| e) { return Ok(e); }
-        Err(CloudRuInnerError::UnresolvedEndpoint(service_id).into())
+        Err(CloudRuError::UnresolvedEndpoint(service_id))
     }
 }
 

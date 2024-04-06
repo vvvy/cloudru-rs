@@ -17,7 +17,7 @@ impl fmt::Display for ParameterKind {
 }
 
 #[derive(Error, Debug)]
-pub enum CloudRuInnerError {
+pub enum CloudRuError {
     #[error("s3: {0}")]
     S3(#[from] s3::error::S3Error),
 
@@ -69,8 +69,8 @@ pub enum CloudRuInnerError {
     #[error("UnresolvedEndpoint: svc={0}")]
     UnresolvedEndpoint(&'static str),
 
-    #[error("UnknownObjectLength")]
-    UnknownObjectLength,
+    #[error("UnknownObjectLength for {0}")]
+    UnknownObjectLength(String),
 
     #[error("Missing project_id")]
     MissingProjectId,
@@ -78,45 +78,23 @@ pub enum CloudRuInnerError {
     #[error("Returning ranges not supported")]
     ReturningRangesNotSupported,
 
+    #[error("[{0}] {1}")]
+    Context(String, Box<CloudRuError>),
+
     #[error("Other")]
     Other,
 }
 
-#[derive(Error, Debug)]
-pub struct CloudRuError {
-    inner: CloudRuInnerError,
-    context: String
-}
-
-impl fmt::Display for CloudRuError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Error: {}", self.inner)?;
-        if !self.context.is_empty() {
-            writeln!(f, "Context: {}", self.context)?;
-        }
-        Ok(())
-    }
-}
-
 impl CloudRuError {
-    pub fn new(inner: CloudRuInnerError, context: String) -> Self { Self { inner, context } }
     pub fn cx(self, context: impl AsRef<str>) -> Self {
-        let context = if self.context.is_empty() {
-            context.as_ref().to_owned()
+        let context = context.as_ref();
+        if context.is_empty() {
+            self
         } else {
-            self.context + "/" + context.as_ref()
-        };
-        Self { context, ..self }
-    }
-    pub fn inner_ref(&self) -> &CloudRuInnerError { &self.inner }
-}
-
-impl<E> From<E> for CloudRuError where CloudRuInnerError: From<E> {
-    fn from(value: E) -> Self {
-        Self { inner: From::from(value), context: Default::default() }
+            Self::Context(context.to_string(), Box::new(self))
+        }
     }
 }
-
 
 pub trait Cx<T>  {
     fn cx(self, context: impl AsRef<str>) -> Result<T, CloudRuError>;
@@ -139,12 +117,6 @@ fn __test_as_error(e: Box<CloudRuError>) -> Box<dyn std::error::Error + Send + S
 
 fn __test_error_cx<T>(r: Result<T, s3::error::S3Error>) -> Result<T, CloudRuError> {
     r.cx("context")
-}
-
-impl From<CloudRuInnerError> for io::Error {
-    fn from(value: CloudRuInnerError) -> Self {
-        <CloudRuError as From<CloudRuInnerError>>::from(value).into()
-    }
 }
 
 impl From<CloudRuError> for io::Error {

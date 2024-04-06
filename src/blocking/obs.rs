@@ -4,7 +4,6 @@ use tracing::{debug, instrument, Level, enabled};
 
 use crate::shared::mauth_obs::*;
 use error::ParameterKind;
-use CloudRuInnerError;
 use CloudRuError;
 
 pub use crate::model::obs::*;
@@ -66,7 +65,7 @@ macro_rules! bail_on_failure {
         if !$result.status().is_success() {
             let status = $result.status();
             let err = $result.text().cx("error text in bail_on_failure")?;
-            return Err(CloudRuInnerError::API(status, err).into());
+            return Err(CloudRuError::API(status, err).into());
         }        
     };
 }
@@ -76,7 +75,7 @@ impl Bucket {
     pub fn new(bucket_name: String, obs_endpoint: String, aksk: AkSk, http_client: Arc<HttpClient>) -> Result<Self> {
         let mut bucket_url: Url = obs_endpoint.parse()?;
         let bucket_host = bucket_url.host()
-            .ok_or(CloudRuInnerError::Parameter(ParameterKind::S3BucketUrl))?;
+            .ok_or(CloudRuError::Parameter(ParameterKind::S3BucketUrl))?;
         let host = format!("{}.{}", bucket_name, bucket_host);
         bucket_url.set_host(Some(&host))?;
         let host = host.parse()?;
@@ -230,10 +229,9 @@ impl Bucket {
     pub fn object_reader(&self, remote_path: impl AsRef<str>) -> Result<ObjectReader> {
         let remote_path = remote_path.as_ref().to_string();
         let metadata = self.get_object_meta(&remote_path)?;
-        let len = metadata.content_length.ok_or_else(|| CloudRuError::new(
-            CloudRuInnerError::UnknownObjectLength, 
-            remote_path.clone()
-        ))?;
+        let len = metadata.content_length.ok_or_else(||
+            CloudRuError::UnknownObjectLength(remote_path.clone())
+        )?;
 
         let bucket = self.clone();
         let client = self.http_client.clone();
@@ -303,7 +301,7 @@ impl Read for ObjectReader {
             self.pos += count;
             Ok(count as usize)
         } else {
-            Err(CloudRuInnerError::API(result.status(), result.text().cx("text")?).into())
+            Err(CloudRuError::API(result.status(), result.text().cx("text")?).into())
         }
     }
 }
@@ -337,7 +335,7 @@ impl ObjectWriter {
     pub fn sync_position(&mut self) -> Result<u64> {
         let meta = self.bucket.get_object_meta(&self.remote_path)?;
         self.pos = meta.content_length.ok_or_else(
-            || CloudRuError::new(CloudRuInnerError::UnknownObjectLength, self.remote_path.to_owned())
+            || CloudRuError::UnknownObjectLength(self.remote_path.clone())
         )?;
         Ok(self.pos)
     }
