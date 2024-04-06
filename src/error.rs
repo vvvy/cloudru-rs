@@ -94,6 +94,28 @@ impl CloudRuError {
             Self::Context(context.to_string(), Box::new(self))
         }
     }
+
+    pub fn decx(&self) -> &CloudRuError {
+        if let Self::Context(_, e) = self {
+            e.decx()
+        } else {
+            self
+        }
+    }
+
+    pub fn is_api_not_found(&self) -> bool{
+        match self.decx() {
+            Self::API(n, _) if *n == 404 => true,
+            _ => false
+        }
+    }
+
+    pub fn api_status(&self) -> Option<u16>{
+        match self.decx() {
+            Self::API(n, _) => Some((*n).into()),
+            _ => None
+        }
+    }
 }
 
 pub trait Cx<T>  {
