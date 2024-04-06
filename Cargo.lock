@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "cloudru"
-version = "0.3.0"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
