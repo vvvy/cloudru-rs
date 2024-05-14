@@ -2,6 +2,7 @@ use reqwest::blocking::Request;
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 use crate::Result;
+use crate::shared::signing;
 
 pub const X_SDK_DATE: &'static str = "X-Sdk-Date";
 
@@ -36,7 +37,7 @@ pub fn canonical_request(m: &Request) -> Result<String> {
         let path = url.path().to_string() + "/";
         url.set_path(&path);
     }
-    Ok(s3::signing::canonical_request(m.method().as_str(), &url, m.headers(), &hexencode(body_hash))?)
+    Ok(signing::canonical_request(m.method().as_str(), &url, m.headers(), &hexencode(body_hash))?)
 }
 
 
@@ -61,7 +62,7 @@ pub fn time_stamp_and_sign(r: &mut reqwest::blocking::Request, dt: time::OffsetD
     let dts = x_sdk_date(dt)?;
     hs.insert(X_SDK_DATE, dts.parse()?);
     let cr = canonical_request(r)?;
-    let sh = s3::signing::signed_header_string(r.headers());    
+    let sh = signing::signed_header_string(r.headers());    
     let s2s = string_to_sign(&cr, dt).unwrap();
     let sig = signature(&s2s, sk)?;
     // SDK-HMAC-SHA256 Access=QTWAOYTTINDUT2QVKYUC, SignedHeaders=content-type;host;x-sdk-date, Signature=7be6668032f70418fcc22abc52071e57aff61b84a1d2381bb430d6870f4f6ebe"

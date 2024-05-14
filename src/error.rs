@@ -18,12 +18,6 @@ impl fmt::Display for ParameterKind {
 
 #[derive(Error, Debug)]
 pub enum CloudRuError {
-    #[error("s3: {0}")]
-    S3(#[from] s3::error::S3Error),
-
-    #[error("s3: {0}")]
-    S3cred(#[from] s3::creds::error::CredentialsError),
-
     #[error("reqwest: {0}")]
     Reqwest(#[from] reqwest::Error),
 
@@ -135,10 +129,6 @@ impl<T, E> Cx<T> for Result<T, E> where CloudRuError: From<E>   {
 
 fn __test_as_error(e: Box<CloudRuError>) -> Box<dyn std::error::Error + Send + Sync> {
     e
-}
-
-fn __test_error_cx<T>(r: Result<T, s3::error::S3Error>) -> Result<T, CloudRuError> {
-    r.cx("context")
 }
 
 impl From<CloudRuError> for io::Error {
