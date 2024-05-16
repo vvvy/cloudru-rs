@@ -30,5 +30,5 @@ percent-encoding = "2"
 tracing-subscriber = "0.3.18"
 #hc = { path = "../hc" }
 anyhow = "1.0"
-clap = { version = "3.1.15", features = ["derive"] }
+clap = { version = "4.5.4", features = ["derive"] }
 
