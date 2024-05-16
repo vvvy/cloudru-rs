@@ -7,8 +7,8 @@ use reqwest::{header::{HeaderMap, HeaderValue}, Body, Method, Request, RequestBu
 use url::Url;
 
 pub use crate::model::obs::*;
-use self::error::ParameterKind;
-use crate::shared::{urltools::WithVar, mauth_obs::*};
+use self::{error::ParameterKind, shared::obs::FsType};
+use crate::shared::{mauth_obs::*, obs::{extract_bucket_meta, extract_object_meta}, urltools::WithVar};
 use super::*;
 use crate::*;
 
@@ -211,17 +211,21 @@ impl Bucket {
         let result = self.http_client.execute(request).await?;
         bail_on_failure!(result);
 
-        let content_length = result.headers().get("content-length")
-            .and_then(|w| w.to_str().ok())
-            .and_then(|w| w.parse().ok());
-        let content_type = result.headers().get("content-type")
-            .and_then(|w| w.to_str().ok())
-            .map(|w| w.to_owned());
-        //Last-Modified: WED, 01 Jul 2015 01:19:21 GMT
-        let last_modified = result.headers().get("last-modified")
-            .and_then(|w| w.to_str().ok())
-            .map(|w| w.to_owned());
-        Ok(ObjectMeta { content_length, content_type, last_modified })                
+        Ok(extract_object_meta(result.headers()))             
+    }
+
+    /// get bucket metadata
+    pub async fn get_bucket_meta(&self) -> Result<BucketMeta> {
+        let request = self.http_client.head(self.url("/"));
+        let request: RequestBuilder = self.start_request(request);
+        let request = self.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = self.http_client.execute(request).await?;
+        bail_on_failure!(result);
+
+        Ok(extract_bucket_meta(result.headers()))
     }
 
     /// create file-like IO object that track r/w position
@@ -241,8 +245,12 @@ impl Bucket {
 
         let bucket = self.clone();
         let pos = 0;
+
+        //check if we are pfs
+        let bucket_meta = bucket.get_bucket_meta().await?;
+        let fs_type = FsType::from_bucket_meta(&bucket_meta);
          
-        Ok(BucketAsyncIO { remote_path, bucket, pos, len })
+        Ok(BucketAsyncIO { remote_path, bucket, fs_type, pos, len })
     }
 
 
@@ -252,8 +260,9 @@ impl Bucket {
 pub struct BucketAsyncIO {
     remote_path: String,
     bucket: Bucket,
+    fs_type: FsType,
     pos: u64,
-    len: u64,    
+    len: u64,
 } 
 
 impl BucketAsyncIO {
@@ -313,14 +322,20 @@ Date: date
 <Optional Additional Header> 
 <object Content>
         */
-        let verb = if self.pos == self.len { "append" } else { "modify" };
+        /*
+PUT /ObjectName?modify&position=Position HTTP/1.1
+Host: bucketname.obs.region.example.com
+Content-Type: type
+Content-Length: length
+Authorization: authorization
+Date: date
+<object Content>
+         */
+        let write_op= self.fs_type.eval_write_op(self.pos, self.len)?;
+        let url = write_op.modify_url(self.bucket.url(&self.remote_path));
         let data_len = data.len();
 
-        let url = self.bucket.url(&self.remote_path)
-            .with_var_key(verb)
-            .with_var("position", &format!("{}", self.pos));
-
-        let request = self.bucket.http_client.request(Method::POST, url)
+        let request = self.bucket.http_client.request(write_op.method, url)
             .header("Content-Length", format!("{data_len}"));
         let request: RequestBuilder = self.bucket.start_request(request);
         let request = request.body(data);

@@ -72,6 +72,9 @@ pub enum CloudRuError {
     #[error("Returning ranges not supported")]
     ReturningRangesNotSupported,
 
+    #[error("fs write op is inconsistent with the pos/length")]
+    InconsistentFsOp { verb: &'static str, pos: u64, len: u64 },
+
     #[error("[{0}] {1}")]
     Context(String, Box<CloudRuError>),
 

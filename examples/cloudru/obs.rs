@@ -12,7 +12,9 @@ pub struct Obs {
 enum ObsCommand {
     Get(ObsGet),
     Put(ObsPut),
-    Ls(ObsLs)
+    Ls(ObsLs),
+    BucketMetadata(ObsBucketMetadata),
+    ObjectMetadata(ObsObjectMetadata),
 }
 
 #[derive(Args, Debug)]
@@ -41,10 +43,21 @@ struct ObsLs {
     max_keys: Option<u32>,
 }
 
+#[derive(Args, Debug)]
+struct ObsBucketMetadata {
+    bucket: String,
+}
+
+#[derive(Args, Debug)]
+struct ObsObjectMetadata {
+    remote: String, 
+}
+
 /// Returns bucket name and remaining path without leading '/'
 fn split_bucket(remote: &str) -> (&str, &str) {
     let remote = remote.strip_prefix("https://").unwrap_or(remote);
     let remote = remote.strip_prefix("http://").unwrap_or(remote);
+    let remote = remote.strip_prefix("obs://").unwrap_or(remote);
     let remote = remote.strip_prefix("/").unwrap_or(remote);
     remote.split_once('/').unwrap_or((remote, ""))
 }
@@ -131,6 +144,20 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             if let Some(next_marker) = list.next_marker {
                 println!("next_marker: {next_marker}")
             }
+            Ok(JsonValue::Bool(true))
+        }
+        ObsCommand::BucketMetadata(bmd) => {
+            let bucket = client.bucket(bmd.bucket)?;
+            let md = bucket.get_bucket_meta()?;
+            println!("{md:?}");
+            Ok(JsonValue::Bool(true))
+        }
+
+        ObsCommand::ObjectMetadata(omd) => {
+            let (bucket_name, source_path) = split_bucket(&omd.remote);
+            let bucket = client.bucket(bucket_name.to_owned())?;
+            let md = bucket.get_object_meta(source_path)?;
+            println!("{md:?}");
             Ok(JsonValue::Bool(true))
         }
     }

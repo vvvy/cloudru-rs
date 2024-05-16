@@ -110,4 +110,72 @@ pub struct ObjectMeta {
     pub content_type: Option<String>,
     /// Date the object was last modified, like "WED, 01 Jul 2015 01:19:21 GMT"
     pub last_modified: Option<String>,
+
+    /// x-obs-expiration
+    /// 
+    /// When an object has its lifecycle rule, the object expiration time is subject to its lifecycle rule. 
+    /// This header field is use expiry-date to describe the object expiration date. If the lifecycle rule is configured 
+    /// only for the entire bucket not individual objects, the object expiration time is subject to the bucket lifecycle rule. 
+    /// This header field uses the expiry-date and rule-id to describe the detailed expiration information of objects. 
+    /// If no lifecycle rule is configured, this header field is not contained in the response.
+    /// 
+    /// Type: string
+    pub expiration: Option<String>,
+
+    /// x-obs-website-redirect-location
+    /// 
+    /// Indicates the redirected-to location. If the bucket is configured with website information, this parameter can be set 
+    /// for the object metadata so that the website endpoint will evaluate the request for the object as a 301 redirect to 
+    /// another object in the same bucket or an external URL.
+    /// 
+    /// Type: string
+    pub website_redirect_location: Option<String>,
+
+    /// x-obs-version-id
+    /// 
+    /// Object version ID. If the object has no version number specified, the response does not contain this header.
+    /// 
+    /// Type: string
+    /// 
+    /// Default value: none
+    pub version_id: Option<String>,
+
+    /// x-obs-object-type
+    /// 
+	/// If the object is not a normal one, this header field is returned. The value can be Appendable.
+    /// 
+    /// Type: string
+    pub object_type: Option<String>,
+
+    /// x-obs-next-append-position
+    /// 
+    /// This header field is returned when the object is an appendable object.
+    /// 
+    /// Type: integer
+    pub next_append_position: Option<u64>,
+
+    /// x-obs-storage-class
+    /// 
+	/// This header is returned when the storage class of an object is not Standard. The value can be WARM or COLD.
+    /// 
+    /// Type: string
+    pub storage_class: Option<String>,
+}
+
+
+/// Bucket metadata returned by [obs::Bucket::get_bucket_meta]
+#[derive(Debug)]
+pub struct BucketMeta {
+    /// x-obs-bucket-location
+    pub bucket_location: Option<String>,
+    /// x-obs-storage-class
+    pub storage_class: Option<String>,
+    /// x-obs-version
+    pub version: Option<String>,
+    /// x-obs-fs-file-interface
+    pub fs_file_interface: Option<String>,
+    /// x-obs-epid
+    pub epid: Option<String>,
+    /// x-obs-az-redundancy
+    pub az_redundancy: Option<String>,
 }

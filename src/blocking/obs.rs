@@ -2,12 +2,14 @@ use std::{io::{self, Read, Seek, SeekFrom, Write}, sync::Arc};
 use reqwest::{blocking::{Body, Request, RequestBuilder}, header::{HeaderMap, HeaderValue}, Method, Url};
 use tracing::{debug, instrument, Level, enabled};
 
-use crate::shared::mauth_obs::*;
+use crate::shared::{mauth_obs::*, obs::{extract_bucket_meta, extract_object_meta}};
 use error::ParameterKind;
 use CloudRuError;
 
 pub use crate::model::obs::*;
 use crate::shared::urltools::*;
+use self::shared::obs::FsType;
+
 use super::*;
 use crate::*;
 
@@ -212,17 +214,21 @@ impl Bucket {
         let result = self.http_client.execute(request)?;
         bail_on_failure!(result);
 
-        let content_length = result.headers().get("content-length")
-            .and_then(|w| w.to_str().ok())
-            .and_then(|w| w.parse().ok());
-        let content_type = result.headers().get("content-type")
-            .and_then(|w| w.to_str().ok())
-            .map(|w| w.to_owned());
-        //Last-Modified: WED, 01 Jul 2015 01:19:21 GMT
-        let last_modified = result.headers().get("last-modified")
-            .and_then(|w| w.to_str().ok())
-            .map(|w| w.to_owned());
-        Ok(ObjectMeta { content_length, content_type, last_modified })                
+        Ok(extract_object_meta(result.headers()))                 
+    }
+
+    /// get bucket metadata
+    pub fn get_bucket_meta(&self) -> Result<BucketMeta> {
+        let request = self.http_client.head(self.url("/"));
+        let request: RequestBuilder = self.start_request(request);
+        let request = self.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = self.http_client.execute(request)?;
+        bail_on_failure!(result);
+
+        Ok(extract_bucket_meta(result.headers()))
     }
 
     /// get object reader. The reader implements [std::io::Read].
@@ -242,14 +248,19 @@ impl Bucket {
     }
 
     /// get object writer. The writer implements [std::io::Write]. 
-    /// Note that currently the object must not exist or must have zero length
+    /// Note that currently
+    /// a) for obs, the object must not exist or must have zero length, otherwise the error is returned
+    /// b) for pfs, the object gets overwritten if it exists
     pub fn object_writer(&self, remote_path: impl AsRef<str>) -> Result<ObjectWriter> {
         let remote_path = remote_path.as_ref().to_string();
         let bucket = self.clone();
-        let client = self.http_client.clone();
         let pos = 0;
+
+        //check if we are pfs
+        let bucket_meta = bucket.get_bucket_meta()?;
+        let fs_type = FsType::from_bucket_meta(&bucket_meta);
          
-        Ok(ObjectWriter { remote_path, bucket, client, pos })
+        Ok(ObjectWriter { remote_path, bucket, fs_type, pos })
     }
 
 }
@@ -325,7 +336,7 @@ impl Seek for ObjectReader {
 pub struct ObjectWriter {
     remote_path: String,
     bucket: Bucket,
-    client: Arc<HttpClient>,
+    fs_type: FsType,
     pos: u64,
 }
 
@@ -353,12 +364,10 @@ Date: date
 <Optional Additional Header> 
 <object Content>
          */
+        let write_op = self.fs_type.eval_write_op(self.pos, self.pos)?;
+        let url = write_op.modify_url(self.bucket.url(&self.remote_path));
 
-        let url = self.bucket.url(&self.remote_path)
-            .with_var_key("append")
-            .with_var("position", &format!("{}", self.pos));
-
-        let request = self.client.request(Method::POST, url)
+        let request = self.bucket.http_client.request(write_op.method, url)
             .header("Content-Length", format!("{}", buf.len()));
         let request: RequestBuilder = self.bucket.start_request(request);
         let request = request.body(Vec::from(buf));
@@ -366,7 +375,7 @@ Date: date
 
         debug!(request_full=?request);
 
-        let result = self.client.execute(request).cx("Client::execute")?;
+        let result = self.bucket.http_client.execute(request).cx("Client::execute")?;
         bail_on_failure!(result);
         let count = buf.len();
         self.pos += count as u64;
