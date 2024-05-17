@@ -514,6 +514,20 @@ Date: date
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        todo!()
+        Ok(())
+    }
+}
+
+impl io::Seek for ObjectIO {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.pos = match pos {
+            io::SeekFrom::Start(pos) =>
+                pos,
+            io::SeekFrom::Current(off) => 
+                self.pos.checked_add_signed(off).ok_or(io::Error::from(io::ErrorKind::InvalidInput))?,
+            io::SeekFrom::End(off) => 
+                self.len.checked_add_signed(off).ok_or(io::Error::from(io::ErrorKind::InvalidInput))?,
+        };
+        Ok(self.pos)
     }
 }
