@@ -1,6 +1,6 @@
 use clap::{Subcommand, Args};
 use anyhow::{Result, anyhow};
-use cloudru::{*, blocking::{*, obs::{ListBucketContents, ListBucketRequest}}};
+use cloudru::{*, blocking::{*, obs::{ListObjectsContents, ListObjectsRequest}}};
 
 #[derive(Args, Debug)]
 pub struct Obs {
@@ -124,7 +124,7 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             let (bucket_name, bucket_path) = split_bucket(&ls.remote);
             let bucket = client.bucket(bucket_name.to_owned())?;
 
-            let list_request = ListBucketRequest {
+            let list_request = ListObjectsRequest {
                 prefix: Some(bucket_path),
                 marker: ls.marker.as_deref(),
                 max_keys: ls.max_keys,
@@ -132,7 +132,7 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             };
             let list = bucket.list_objects(list_request)?;
             let Some(contents) = list.contents else { return Ok(JsonValue::Bool(true)) };
-            for ListBucketContents { key, last_modified, etag, size, storage_class, type_, owner } in contents {
+            for ListObjectsContents { key, last_modified, etag, size, storage_class, type_, owner } in contents {
                 let type_ = type_.as_deref().unwrap_or("-");
                 let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
                 if ls.long {

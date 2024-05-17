@@ -97,7 +97,7 @@ impl Bucket {
     }
 
     #[instrument]
-    pub fn list_objects(&self, request: ListBucketRequest<'_>) -> Result<ListBucketResult> {
+    pub fn list_objects(&self, request: ListObjectsRequest<'_>) -> Result<ListObjectsResult> {
         
         let url = self.url("/")
             .with_var_opt("prefix", request.prefix)
@@ -117,7 +117,7 @@ impl Bucket {
         let result = self.http_client.execute(request)?;
         bail_on_failure!(result);
 
-        let p: ListBucketResult = if enabled!(Level::DEBUG) {
+        let p: ListObjectsResult = if enabled!(Level::DEBUG) {
             let text = result.text()?;
             debug!(response_text=?&text);
             serde_xml_rs::from_str(&text)?
@@ -128,8 +128,8 @@ impl Bucket {
 
     }
 
-    pub fn list(&self, prefix: Option<&str>) -> Result<ListBucketResult> {
-        self.list_objects(ListBucketRequest { prefix, ..Default::default() })
+    pub fn list(&self, prefix: Option<&str>) -> Result<ListObjectsResult> {
+        self.list_objects(ListObjectsRequest { prefix, ..Default::default() })
     }
 
     fn start_request(&self, request: RequestBuilder) -> RequestBuilder {

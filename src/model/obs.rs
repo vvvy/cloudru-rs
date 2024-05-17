@@ -1,7 +1,7 @@
 use serde_derive::Deserialize;
 
 #[derive(Debug, Default)]
-pub struct ListBucketRequest<'t> {
+pub struct ListObjectsRequest<'t> {
     pub prefix: Option<&'t str>,
     pub marker: Option<&'t str>,
     pub max_keys: Option<u32>,
@@ -35,7 +35,7 @@ pub struct ListBucketRequest<'t> {
 </ListBucketResult>
 */
 #[derive(Deserialize, Debug)]
-pub struct ListBucketResult {
+pub struct ListObjectsResult {
     #[serde(rename="Name")]
     pub name: String,
     
@@ -64,11 +64,11 @@ pub struct ListBucketResult {
     //pub common_prefixes: Option<String>,
 
     #[serde(rename="Contents")]
-    pub contents: Option<Vec<ListBucketContents>>,
+    pub contents: Option<Vec<ListObjectsContents>>,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ListBucketContents {
+pub struct ListObjectsContents {
     #[serde(rename="Key")]
     pub key: String,
 

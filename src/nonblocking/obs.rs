@@ -96,7 +96,7 @@ impl Bucket {
     }
 
     #[instrument]
-    pub async fn list_objects(&self, request: ListBucketRequest<'_>) -> Result<ListBucketResult> {
+    pub async fn list_objects(&self, request: ListObjectsRequest<'_>) -> Result<ListObjectsResult> {
         
         let url = self.url("/")
             .with_var_opt("prefix", request.prefix)
@@ -123,8 +123,8 @@ impl Bucket {
         Ok(p)
     }
 
-    pub async fn list(&self, prefix: Option<&str>) -> Result<ListBucketResult> {
-        self.list_objects(ListBucketRequest { prefix, ..Default::default() }).await
+    pub async fn list(&self, prefix: Option<&str>) -> Result<ListObjectsResult> {
+        self.list_objects(ListObjectsRequest { prefix, ..Default::default() }).await
     }
 
     fn start_request(&self, request: RequestBuilder) -> RequestBuilder {
