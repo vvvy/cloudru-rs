@@ -239,12 +239,10 @@ impl Bucket {
             CloudRuError::UnknownObjectLength(remote_path.clone())
         )?;
 
-        let bucket = self.clone();
-        let client = self.http_client.clone();
-        
+        let bucket = self.clone();        
         let pos = 0;
          
-        Ok(ObjectReader { remote_path, bucket, client, metadata, pos, len })
+        Ok(ObjectReader { remote_path, bucket, metadata, pos, len })
     }
 
     /// get object writer. The writer implements [std::io::Write]. 
@@ -268,7 +266,6 @@ impl Bucket {
 pub struct ObjectReader {
     remote_path: String,
     bucket: Bucket,
-    client: Arc<HttpClient>,
     metadata: ObjectMeta,
     len: u64,
     pos: u64,
@@ -295,14 +292,14 @@ impl Read for ObjectReader {
         let (first, last) = (self.pos, self.pos + buf.len() as u64 - 1);
         let range = format!("bytes={first}-{last}");
 
-        let request = self.client.request(Method::GET, self.bucket.url(&self.remote_path));
+        let request = self.bucket.http_client.request(Method::GET, self.bucket.url(&self.remote_path));
         let request: RequestBuilder = self.bucket.start_request(request);
         let request = request.header("range", range);
         let request = self.bucket.sign_request(request)?;
     
         debug!(request_full=?request);
 
-        let mut result = self.client.execute(request).cx("Client::execute")?;
+        let mut result = self.bucket.http_client.execute(request).cx("Client::execute")?;
         if result.status().is_success() {
             if result.status().as_u16() != 206 { //Partial content
                 return Err(io::Error::new(io::ErrorKind::Unsupported, "returning ranges not suppoerted"))

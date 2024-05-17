@@ -90,7 +90,7 @@ pub fn extract_bucket_meta(headers: &HeaderMap) -> BucketMeta {
 
     let bucket_location = get_str("x-obs-bucket-location");
     let storage_class = get_str("x-obs-storage-class");
-    let version = get_str("xx-obs-version");
+    let version = get_str("x-obs-version");
     let fs_file_interface = get_str("x-obs-fs-file-interface");
     let epid = get_str("x-obs-epid");
     let az_redundancy = get_str("x-obs-az-redundancy");
