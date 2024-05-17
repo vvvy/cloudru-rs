@@ -15,17 +15,17 @@ use crate::*;
 
 pub struct ObsClient {
     endpoint: String,
-    aksk: AkSk,
+    credentials: Credentials,
     http_client: HttpClient,
 }
 
 impl ObsClient {
-    pub fn new(endpoint: String, aksk: AkSk, http_client: HttpClient) -> Self { Self { endpoint, http_client, aksk } }
+    pub fn new(endpoint: String, credentials: Credentials, http_client: HttpClient) -> Self { Self { endpoint, http_client, credentials } }
     pub fn bucket(&self, bucket_name: String) -> Result<Bucket> { 
         Bucket::new(
             bucket_name, 
             self.endpoint.clone(), 
-            self.aksk.clone(), 
+            self.credentials.clone(), 
             self.http_client.clone()
         ) }
 }
@@ -35,7 +35,7 @@ pub struct Bucket {
     bucket_name: String,
     bucket_url: Url,
     host: HeaderValue,
-    aksk: AkSk,
+    credentials: Credentials,
     http_client: HttpClient,
 }
 
@@ -49,14 +49,14 @@ impl<'r> RequestW for R<'r> {
 
 
 trait Signer {
-    fn timestamp_and_sign(self, bucket_name: &str, aksk: &AkSk) -> Result<Request>;
+    fn timestamp_and_sign(self, bucket_name: &str, credentials: &Credentials) -> Result<Request>;
 }
 
 impl Signer for RequestBuilder {
-    fn timestamp_and_sign(self, bucket_name: &str, aksk: &AkSk) -> Result<Request> {
+    fn timestamp_and_sign(self, bucket_name: &str, credentials: &Credentials) -> Result<Request> {
         let mut request = self.build()?;
         let dt = time::OffsetDateTime::now_utc();
-        time_stamp_and_sign(bucket_name, &mut R { r: &mut request }, dt, &aksk.ak, &aksk.sk)?;
+        time_stamp_and_sign(bucket_name, &mut R { r: &mut request }, dt, &credentials.ak, &credentials.sk)?;
         Ok(request)
     }
 }
@@ -73,14 +73,14 @@ macro_rules! bail_on_failure {
 
 
 impl Bucket {
-    pub fn new(bucket_name: String, obs_endpoint: String, aksk: AkSk, http_client: HttpClient) -> Result<Self> {
+    pub fn new(bucket_name: String, obs_endpoint: String, credentials: Credentials, http_client: HttpClient) -> Result<Self> {
         let mut bucket_url: Url = obs_endpoint.parse()?;
         let bucket_host = bucket_url.host()
             .ok_or(CloudRuError::Parameter(ParameterKind::S3BucketUrl))?;
         let host = format!("{}.{}", bucket_name, bucket_host);
         bucket_url.set_host(Some(&host))?;
         let host = host.parse()?;
-        Ok(Self { bucket_name, bucket_url, host, aksk, http_client })
+        Ok(Self { bucket_name, bucket_url, host, credentials, http_client })
     }
 
     #[inline]
@@ -109,7 +109,7 @@ impl Bucket {
 
         let request = self.http_client.request(Method::GET, url)
             .header("host", self.host.clone())
-            .timestamp_and_sign(&self.bucket_name, &self.aksk)?;
+            .timestamp_and_sign(&self.bucket_name, &self.credentials)?;
 
         debug!(request_full=?request);
 
@@ -132,7 +132,7 @@ impl Bucket {
     }
 
     fn sign_request(&self, request: RequestBuilder) -> Result<Request> {
-        request.timestamp_and_sign(&self.bucket_name, &self.aksk)
+        request.timestamp_and_sign(&self.bucket_name, &self.credentials)
     }
 
 

@@ -5,7 +5,7 @@ pub(crate) type ServiceId = &'static str;
 
 pub struct Client<HC> {
     pub(crate) config: Config,
-    pub(crate) aksk: AkSk,
+    pub(crate) credentials: Credentials,
     pub(crate) http_client: HC,
 }
 
@@ -35,7 +35,7 @@ pub struct ClientBuilder {
     pub credentials_id: Option<String>,
     pub project_id: Option<String>,
     pub region: Option<String>,
-    pub aksk: Option<AkSk>,
+    pub credentials: Option<Credentials>,
 }
 
 impl ClientBuilder {
@@ -45,7 +45,7 @@ impl ClientBuilder {
     pub fn credentials_id(self, arg: &str) -> Self { Self { credentials_id: Some(arg.to_owned()), ..self } }
     pub fn project_id(self, arg: &str) -> Self { Self { project_id: Some(arg.to_owned()), ..self } }
     pub fn region(self, arg: &str) -> Self { Self { region: Some(arg.to_owned()), ..self } }
-    pub fn aksk(self, arg: AkSk) -> Self { Self { aksk: Some(arg), ..self } }
+    pub fn credentials(self, arg: Credentials) -> Self { Self { credentials: Some(arg), ..self } }
     pub fn build_with_http_client<HC>(self, http_client: HC) -> Result<Client<HC>> {
         let (config_path, force) = self.config_file
             .map(|f| (f, true))
@@ -56,8 +56,8 @@ impl ClientBuilder {
         if let Some(project_id) = self.project_id { config.project_id = Some(project_id); }
         if let Some(region) = self.region { config.region = region; }
         
-        let aksk = if let Some(aksk) = self.aksk {
-            aksk
+        let credentials = if let Some(credentials) = self.credentials {
+            credentials
         } else {
             read_credentials(
                 self.credentials_file.unwrap_or_else(|| DEFAULT_CREDENTIALS_FILE.to_owned()),
@@ -65,6 +65,6 @@ impl ClientBuilder {
             )?
         };
 
-        Ok(Client {config, aksk, http_client })
+        Ok(Client {config, credentials, http_client })
     }
 }

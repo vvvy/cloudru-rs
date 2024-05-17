@@ -14,19 +14,19 @@ pub trait ServiceClientBuild {
 impl ServiceClientBuild for Client {
     fn obs(&self) -> Result<super::obs::ObsClient> { Ok(super::obs::ObsClient::new(
         self.resolve_endpoint(svc_id::obs)?,
-        self.aksk.clone(),
+        self.credentials.clone(),
         self.http_client.clone()))
     }
 
     /*fn apig(&self) -> Result<super::apig::ApigClient> { Ok(super::apig::ApigClient::new(
         self.resolve_endpoint(svc_id::apig)?, 
-        self.aksk.clone(),
+        self.credentials.clone(),
         self.http_client.clone()))
     }
     fn fg(&self) -> Result<super::fg::FgClient> { Ok(super::fg::FgClient::new(
         self.resolve_endpoint(svc_id::fg)?,
         self.resolve_project_id()?,
-        self.aksk.clone(),
+        self.credentials.clone(),
         self.http_client.clone()))
     }
     */

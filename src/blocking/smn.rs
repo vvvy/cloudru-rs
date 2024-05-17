@@ -21,7 +21,7 @@ struct PublishApdu<'t> {
 }
 
 
-pub fn publish_message<V: serde::Serialize>(config: &SmnConfig, aksk: &AkSk, topic: &SmnTopic, subject: &str, value: &V
+pub fn publish_message<V: serde::Serialize>(config: &SmnConfig, credentials: &Credentials, topic: &SmnTopic, subject: &str, value: &V
 ) -> Result<u16> {
 
     let url = format!("{e}/v2/{p}/notifications/topics/{t}/publish", 
@@ -34,7 +34,7 @@ pub fn publish_message<V: serde::Serialize>(config: &SmnConfig, aksk: &AkSk, top
     let apdu = PublishApdu { subject, message };
     let mut request = client.post(url).json(&apdu).build()?;
     let dt = time::OffsetDateTime::now_utc();
-    mauth::time_stamp_and_sign(&mut request, dt, &aksk.ak, &aksk.sk)?;
+    mauth::time_stamp_and_sign(&mut request, dt, &credentials.ak, &credentials.sk)?;
 
     let resp = client.execute(request)?;
     let rv: u16 = resp.status().into();

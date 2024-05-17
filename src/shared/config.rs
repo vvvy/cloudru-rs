@@ -18,11 +18,11 @@ fn tildeexpand(s: String) -> String {
     s.replace("~", &v)
 }
 
-pub fn read_credentials(path: String, id: String) -> Result<AkSk> {
+pub fn read_credentials(path: String, id: String) -> Result<Credentials> {
     let path = tildeexpand(path);
     let cred_ini = ini::Ini::load_from_file(&path).cxd(|| format!("reading credentials file {path}"))?;
     let def = &cred_ini[id.as_ref()];
-    Ok(AkSk{ ak: def[ACCESS_KEY_ID_KEY].to_owned(), sk:  def[SECRET_ACCESS_KEY_KEY].to_owned() })
+    Ok(Credentials{ ak: def[ACCESS_KEY_ID_KEY].to_owned(), sk:  def[SECRET_ACCESS_KEY_KEY].to_owned() })
 }
 
 #[derive(Default)]
