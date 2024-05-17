@@ -229,7 +229,7 @@ impl Bucket {
     }
 
     /// create file-like IO object that track r/w position
-    pub async fn object_io(&self, remote_path: impl AsRef<str>) -> Result<BucketAsyncIO> {
+    pub async fn object_io(&self, remote_path: impl AsRef<str>) -> Result<ObjectIO> {
         let remote_path = remote_path.as_ref().to_string();
 
         // yield 0 if it is 404 error
@@ -250,14 +250,14 @@ impl Bucket {
         let bucket_meta = bucket.get_bucket_meta().await?;
         let fs_type = FsType::from_bucket_meta(&bucket_meta);
          
-        Ok(BucketAsyncIO { remote_path, bucket, fs_type, pos, len })
+        Ok(ObjectIO { remote_path, bucket, fs_type, pos, len })
     }
 
 
 }
 
 
-pub struct BucketAsyncIO {
+pub struct ObjectIO {
     remote_path: String,
     bucket: Bucket,
     fs_type: FsType,
@@ -265,7 +265,7 @@ pub struct BucketAsyncIO {
     len: u64,
 } 
 
-impl BucketAsyncIO {
+impl ObjectIO {
     /// Synchronizes cached position with the length of the actual object, so that we can resume appending to it.
     /// The object must exist and must be created in append mode.
     pub async fn sync_position(&mut self) -> Result<u64> {
@@ -277,11 +277,13 @@ impl BucketAsyncIO {
         Ok(self.len)
     }
 
+    /// Read/write position
     pub fn pos(&self) -> u64 { self.pos }
+    /// Current length of the entire object
     pub fn len(&self) -> u64 { self.len }
 
     /// read `len` bytes from the bucket 
-    pub async fn read_bucket(&mut self, len: usize) -> Result<Bytes> {
+    pub async fn read(&mut self, len: usize) -> Result<Bytes> {
         if len == 0 {
             return Ok(Bytes::new())
         }
@@ -311,7 +313,7 @@ impl BucketAsyncIO {
     }
 
     /// write/append `data` to the bucket 
-    pub async fn write_bucket(&mut self, data: Bytes) -> Result<usize> {
+    pub async fn write(&mut self, data: Bytes) -> Result<usize> {
         /*
 POST /ObjectName?append&position=Position HTTP/1.1 
 Host: bucketname.obs.region.example.com
@@ -351,7 +353,7 @@ Date: date
     }
 }
 
-impl io::Seek for BucketAsyncIO {
+impl io::Seek for ObjectIO {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         self.pos = match pos {
             io::SeekFrom::Start(pos) =>
