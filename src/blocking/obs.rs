@@ -232,6 +232,7 @@ impl Bucket {
     }
 
     /// get object reader. The reader implements [std::io::Read].
+    #[deprecated(note="use object_io instead")]
     pub fn object_reader(&self, remote_path: impl AsRef<str>) -> Result<ObjectReader> {
         let remote_path = remote_path.as_ref().to_string();
         let metadata = self.get_object_meta(&remote_path)?;
@@ -249,6 +250,7 @@ impl Bucket {
     /// Note that currently
     /// a) for obs, the object must not exist or must have zero length, otherwise the error is returned
     /// b) for pfs, the object gets overwritten if it exists
+    #[deprecated(note="use object_io instead")]
     pub fn object_writer(&self, remote_path: impl AsRef<str>) -> Result<ObjectWriter> {
         let remote_path = remote_path.as_ref().to_string();
         let bucket = self.clone();
@@ -261,6 +263,31 @@ impl Bucket {
         Ok(ObjectWriter { remote_path, bucket, fs_type, pos })
     }
 
+
+    /// create file-like IO object that track r/w position
+    pub fn object_io(&self, remote_path: impl AsRef<str>) -> Result<ObjectIO> {
+        let remote_path = remote_path.as_ref().to_string();
+
+        // yield 0 if it is 404 error
+        let len = match self.get_object_meta(&remote_path) {
+            Ok(metadata) => metadata.content_length.ok_or_else(
+                || CloudRuError::UnknownObjectLength(remote_path.clone())
+            )?,
+            Err(e) => match e {
+                CloudRuError::API(n, _) if n == 404 => Ok(0),
+                _ => Err(e),
+            }?
+        };
+
+        let bucket = self.clone();
+        let pos = 0;
+
+        //check if we are pfs
+        let bucket_meta = bucket.get_bucket_meta()?;
+        let fs_type = FsType::from_bucket_meta(&bucket_meta);
+         
+        Ok(ObjectIO { remote_path, bucket, fs_type, pos, len })
+    }
 }
 
 pub struct ObjectReader {
@@ -384,3 +411,109 @@ Date: date
     }
 }
 
+
+
+
+pub struct ObjectIO {
+    remote_path: String,
+    bucket: Bucket,
+    fs_type: FsType,
+    pos: u64,
+    len: u64,
+} 
+
+impl ObjectIO {
+    /// Synchronizes cached position with the length of the actual object, so that we can resume appending to it.
+    /// The object must exist and must be created in append mode.
+    pub fn sync_position(&mut self) -> Result<u64> {
+        let meta = self.bucket.get_object_meta(&self.remote_path)?;
+        self.len = meta.content_length.ok_or_else(
+            || CloudRuError::UnknownObjectLength(self.remote_path.clone())
+        )?;
+        if self.pos > self.len { self.pos = self.len }
+        Ok(self.len)
+    }
+
+
+    /// Read/write position
+    pub fn pos(&self) -> u64 { self.pos }
+    /// Current length of the entire object
+    pub fn len(&self) -> u64 { self.len }
+}
+
+impl Read for ObjectIO {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0)
+        }
+
+        let (first, last) = (self.pos, self.pos + buf.len() as u64 - 1);
+        let range = format!("bytes={first}-{last}");
+
+        let request = self.bucket.http_client.request(Method::GET, self.bucket.url(&self.remote_path));
+        let request: RequestBuilder = self.bucket.start_request(request);
+        let request = request.header("range", range);
+        let request = self.bucket.sign_request(request)?;
+    
+        debug!(request_full=?request);
+
+        let mut result = self.bucket.http_client.execute(request).cx("Client::execute")?;
+        if result.status().is_success() {
+            if result.status().as_u16() != 206 { //Partial content
+                return Err(io::Error::new(io::ErrorKind::Unsupported, "returning ranges not suppoerted"))
+            }
+            let mut w = buf;
+            let count = result.copy_to(&mut w).cx("copy_to")?;
+            self.pos += count;
+            Ok(count as usize)
+        } else {
+            Err(CloudRuError::API(result.status(), result.text().cx("text")?).into())
+        }
+    }
+}
+
+impl Write for ObjectIO {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                /*
+POST /ObjectName?append&position=Position HTTP/1.1 
+Host: bucketname.obs.region.example.com
+Content-Type: application/xml 
+Content-Length: length
+Authorization: authorization
+Date: date
+<Optional Additional Header> 
+<object Content>
+        */
+        /*
+PUT /ObjectName?modify&position=Position HTTP/1.1
+Host: bucketname.obs.region.example.com
+Content-Type: type
+Content-Length: length
+Authorization: authorization
+Date: date
+<object Content>
+         */
+        let write_op= self.fs_type.eval_write_op(self.pos, self.len)?;
+        let url = write_op.modify_url(self.bucket.url(&self.remote_path));
+        let data_len = buf.len();
+
+        let request = self.bucket.http_client.request(write_op.method, url)
+            .header("Content-Length", format!("{data_len}"));
+        let request: RequestBuilder = self.bucket.start_request(request);
+        let request = request.body(Vec::from(buf));
+        let request = self.bucket.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = self.bucket.http_client.execute(request).cx("Client::execute")?;
+        bail_on_failure!(result);
+        self.pos += data_len as u64;
+        if self.pos > self.len { self.len = self.pos }
+        Ok(data_len)
+
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        todo!()
+    }
+}

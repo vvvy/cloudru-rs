@@ -23,11 +23,11 @@ fn basic_test(bucket: Bucket) -> Result<()> {
     Ok(())
 }
 
-fn object_reader_test(bucket: Bucket) -> Result<()> {
+fn object_io_read_test(bucket: Bucket) -> Result<()> {
     let data: Vec<u8> = b"Quick brown fox jumps over lazy dog".to_vec();
     let () = bucket.put_object("test.txt", data.clone())?;
 
-    let mut reader = bucket.object_reader("test.txt")?;
+    let mut reader = bucket.object_io("test.txt")?;
 
     let mut buf = [0; 10];
 
@@ -40,13 +40,13 @@ fn object_reader_test(bucket: Bucket) -> Result<()> {
     Ok(())
 }
 
-fn object_writer_test(bucket: Bucket) -> Result<()> {
+fn object_io_write_test(bucket: Bucket) -> Result<()> {
     let obj = "test_writer.txt";
     let data: Vec<u8> = b"Quick brown fox jumps over lazy dog".to_vec();
 
     bucket.delete_object(obj)?;
 
-    let mut writer = bucket.object_writer(obj)?;
+    let mut writer = bucket.object_io(obj)?;
 
     assert_eq!(writer.write(&data[0..10]).unwrap(), 10);
     assert_eq!(writer.write(&data[10..]).unwrap(), data.len() - 10);
@@ -57,6 +57,8 @@ fn object_writer_test(bucket: Bucket) -> Result<()> {
 
     Ok(())
 }
+
+
 
 
 
@@ -86,8 +88,8 @@ fn obs() -> Result<()> {
     let bucket = obs.bucket(bucket_name.to_owned())?;
 
     basic_test(bucket.clone())?;
-    object_reader_test(bucket.clone())?;
-    object_writer_test(bucket.clone())?;
+    object_io_read_test(bucket.clone())?;
+    object_io_write_test(bucket.clone())?;
 
     Ok(())
 }
