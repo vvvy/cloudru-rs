@@ -1,6 +1,7 @@
 mod apig;
 mod fg;
 mod obs;
+mod dli;
 
 use clap::{Parser, Subcommand};
 use anyhow::Result;
@@ -13,12 +14,14 @@ use config::*;
 use apig::*;
 use fg::*;
 use obs::*;
+use dli::*;
 
 #[derive(Subcommand, Debug)]
 enum Command {
     Apig(Apig),
     Fg(Fg),
     Obs(Obs),
+    Dli(Dli)
 }
 
 #[derive(Parser, Debug)]
@@ -77,6 +80,7 @@ fn main() -> Result<()> {
         Command::Apig(apig) => handle_apig(client.apig()?, apig)?,
         Command::Fg(fg) => handle_fg(client.fg()?, fg)?,
         Command::Obs(obs) => handle_obs(client.obs()?, obs)?,
+        Command::Dli(dli)  => handle_dli(client.dli()?, dli)?,
     };
 
     cloudru::json_to_writer_pretty(std::io::stdout(), &rv)?;

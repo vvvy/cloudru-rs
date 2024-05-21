@@ -10,6 +10,7 @@ pub trait ServiceClientBuild {
     fn obs(&self) -> Result<super::obs::ObsClient>;
     fn apig(&self) -> Result<super::apig::ApigClient>;
     fn fg(&self) -> Result<super::fg::FgClient>;
+    fn dli(&self) -> Result<super::dli::DliClient>;
 }
 
 impl ServiceClientBuild for Client {
@@ -25,6 +26,12 @@ impl ServiceClientBuild for Client {
     }
     fn fg(&self) -> Result<super::fg::FgClient> { Ok(super::fg::FgClient::new(
         self.resolve_endpoint(svc_id::fg)?,
+        self.resolve_project_id()?,
+        self.credentials.clone(),
+        self.http_client.clone()))
+    }
+    fn dli(&self) -> Result<super::dli::DliClient> { Ok(super::dli::DliClient::new(
+        self.resolve_endpoint(svc_id::dli)?,
         self.resolve_project_id()?,
         self.credentials.clone(),
         self.http_client.clone()))

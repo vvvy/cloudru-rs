@@ -69,12 +69,14 @@ pub mod svc_id {
     pub static apig: &str = "apig";
     pub static fg: &str = "fg";
     pub static obs: &str = "obs";
+    pub static dli: &str = "dli";
 }
 
 pub const DEFAULT_ENDPOINTS: phf::Map<&'static str, &'static str> = phf_map!{
     "apig" => "https://apig.ru-moscow-1.hc.sbercloud.ru",
     "fg" => "https://functiongraph.ru-moscow-1.hc.sbercloud.ru",
     "obs" => "https://obs.ru-moscow-1.hc.sbercloud.ru",
+    "dli"  => "https://dli.ru-moscow-1.hc.sbercloud.ru",
 };
 
 
