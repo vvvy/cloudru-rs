@@ -68,7 +68,7 @@ impl ClientBuilder {
         Ok(Client {config, credentials, http_client })
     }
 
-    /// Creates client builder from environment
+    /// Configures client builder from environment
     /// 
     /// The variables are supposed to have at most two optional prefixes, `env_prefix` and `env_flavor_prefix`, 
     /// with `env_prefix` leading. If there is no variable within the flavor, we fall back to no-flavor variable.
@@ -119,4 +119,51 @@ impl ClientBuilder {
         self
     }
 
+
+    /// Returns help text for the `env_prefix` and `env_flavor_prefix`
+    pub fn environment_help(env_prefix: Option<&str>, env_flavor_prefix: Option<&str>) -> String {
+        let f: Box<dyn Fn(&str, &str) -> String> = match (env_prefix, env_flavor_prefix) {
+            (Some(p), Some(f)) => Box::new(move |v, d| format!(r#"
+    {p}_{f}_{v}
+    {p}_{v}
+    {d}
+"#)),
+            (Some(p), None) => Box::new(move |v, d| format!(r#"
+    {p}_{v}
+    {d}
+"#)),
+            (None, Some(f)) => Box::new(move |v, d| format!(r#"
+    {f}_{v}
+    {v}
+    {d}
+"#)),
+            (None, None) => Box::new(move |v, d| format!(r#"
+    {v}
+    {d}
+"#))
+    };
+
+        let vars = [
+            ("AK", "Access key"),
+            ("SK", "Secret key"),
+            ("SCA_CONFIG_FILE", "Configuration file path"),
+            ("SCA_CREDENTIALS_FILE", "Credentials file path"),
+            ("SCA_CREDENTIALS_ID", "Id of credentials"),
+            ("SCA_REGION", "SCA Region ID"),
+            ("SCA_PROJECT_ID", "SCA Project ID"),
+        ]; 
+
+        let mut w = String::new();
+        w += r#"
+SCA configuration environment variables:
+"#;
+        for (b, d) in vars {
+            w += &f(b, d);
+        }
+        w
+    }
+
 }
+
+
+
