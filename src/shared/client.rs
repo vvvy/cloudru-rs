@@ -67,4 +67,56 @@ impl ClientBuilder {
 
         Ok(Client {config, credentials, http_client })
     }
+
+    /// Creates client builder from environment
+    /// 
+    /// The variables are supposed to have at most two optional prefixes, `env_prefix` and `env_flavor_prefix`, 
+    /// with `env_prefix` leading. If there is no variable within the flavor, we fall back to no-flavor variable.
+    /// 
+    /// Variable base names are:
+    /// 
+    /// * `AK` and `SK` - access key and secret key (both required)
+    /// * `SCA_CONFIG_FILE`
+    /// * `SCA_CREDENTIALS_FILE`
+    /// * `SCA_CREDENTIALS_ID`
+    /// * `SCA_REGION`
+    /// * `SCA_PROJECT_ID`
+    /// 
+    /// Example: if `env_prefix` == "P" and `env_flavor_prefix` == "F", the loader attempts to load the config file setting 
+    /// first from `P_F_SCA_CONFIG_FILE`, then from `P_SCA_CONFIG_FILE`
+    pub fn from_environment(mut self, env_prefix: Option<&str>, env_flavor_prefix: Option<&str>) -> Self {
+        use std::env::var;
+        let pe: Box<dyn Fn(&str) -> std::result::Result<String, _>> = match (env_prefix, env_flavor_prefix) {
+            (None, None) => 
+                Box::new(|s| var(s)),
+            (Some(p), None) => 
+                Box::new(move |s: &str| var(&format!("{p}_{s}"))),
+            (None, Some(f)) => 
+                Box::new(move |s: &str| var(&format!("{f}_{s}")).or_else(|_| var(s))),
+            (Some(p), Some(f)) => 
+                Box::new(move |s: &str| var(&format!("{p}_{f}_{s}")).or_else(|_| var(&format!("{p}_{s}")))),
+        };
+        
+        if let (Ok(ak), Ok(sk)) = (pe("AK"), pe("SK")) {
+            self = self.credentials(Credentials { ak, sk })
+        }
+        if let Ok(config_file) = pe("SCA_CONFIG_FILE") {
+            self = self.config_file(&config_file)
+        }
+        if let Ok(credentials_file) = pe("SCA_CREDENTIALS_FILE") {
+            self = self.credentials_file(&credentials_file)
+        }
+        if let Ok(credentials_id) = pe("SCA_CREDENTIALS_ID") {
+            self = self.credentials_id(&credentials_id)
+        }
+        if let Ok(region) = pe("SCA_REGION") {
+            self = self.region(&region)
+        }
+        if let Ok(project_id) = pe("SCA_PROJECT_ID") {
+            self = self.project_id(&project_id)
+        }
+
+        self
+    }
+
 }
