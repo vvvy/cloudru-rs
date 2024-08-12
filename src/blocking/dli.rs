@@ -7,6 +7,7 @@ use std::sync::Arc;
 pub use crate::model::dli as model;
 use super::*;
 use crate::*;
+use crate::config::svc_id;
 
 pub struct DliClient {
     endpoint: String,
@@ -39,5 +40,20 @@ impl DliClient {
             &self.credentials,
             &self.http_client
         )
+    }
+}
+
+pub trait DliClientBuild {
+    fn build_dli(&self) -> Result<DliClient>;
+}
+
+impl DliClientBuild for Client {
+    fn build_dli(&self) -> Result<DliClient> {
+        Ok(DliClient::new(
+            self.resolve_endpoint(svc_id::dli)?,
+            self.resolve_project_id()?,
+            self.credentials.clone(),
+            self.http_client.clone(),
+        ))
     }
 }
