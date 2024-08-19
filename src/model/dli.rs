@@ -1,4 +1,4 @@
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 
 
 #[derive(Deserialize, Debug, Default)]
@@ -251,4 +251,58 @@ pub struct Table {
     /// Mandatory: No. Type: Integer
     #[serde(rename="current-page")]
     pub current_page: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+    pub struct GetPartitionsResponse {
+        pub is_success: Option<bool>,
+        pub message: Option<String>,
+        pub partitions: Option<Partitions>,
+    }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Partitions {
+    pub total_count: i64,
+    pub partition_infos: Vec<PartitionInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PartitionInfo {
+    pub partition_name: String,
+    pub create_time: i64,
+    pub last_access_time: i64,
+    pub locations: Option<Vec<String>>,
+    pub last_ddl_time: Option<i64>,
+    pub num_rows: Option<i64>,
+    pub num_files: Option<i64>,
+    pub total_size: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct GetTableResponse {
+    pub is_success: bool,
+    pub message: String,
+    pub column_count: u32,
+    pub columns: Vec<Column>,
+    pub table_type: String,
+    pub data_type: Option<String>,
+    pub data_location: Option<String>,
+    pub storage_properties: Option<Vec<StorageProperty>>,
+    pub table_comment: Option<String>,
+    pub create_table_sql: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct StorageProperty {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Column {
+    pub column_name: String,
+    pub description: String,
+    #[serde(rename = "type")]
+    pub column_type: String,
+    pub is_partition_column: bool,
 }
