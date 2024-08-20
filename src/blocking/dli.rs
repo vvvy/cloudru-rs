@@ -43,7 +43,6 @@ impl DliClient {
         )
     }
 
-
     // api doc - https://support.hc.sbercloud.ru/en-us/api/dli/dli_02_0105.html
     pub fn get_tables(&self, database: &str) -> Result<model::GetTablesResponse> {
         let endpoint = &self.endpoint;
@@ -95,6 +94,7 @@ impl DliClient {
         )
     }
 
+    // https://support.hc.sbercloud.ru/en-us/api/dli/dli_02_0033.html
     pub fn get_table(
         &self,
         database_name: &str,

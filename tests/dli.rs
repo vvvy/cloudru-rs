@@ -46,6 +46,16 @@ fn test_get_tables() -> Result<()> {
 }
 
 #[test]
+fn test_get_table() -> Result<()> {
+    let dli_client = create_dli_client()?;
+    let database = "dm_top100".to_string();
+    let table_name = "sessions_eb".to_string();
+    let response = dli_client.get_table(&database, &table_name)?;
+    println!("get_table response: {:?}", response);
+    Ok(())
+}
+
+#[test]
 fn test_get_partitions() -> Result<()> {
     let dli_client = create_dli_client()?;
     let db_name = "dm_top100".to_string();
