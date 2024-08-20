@@ -1,6 +1,6 @@
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct GetDatabasesResponse {
     /// is_success
     ///
@@ -30,7 +30,7 @@ pub struct GetDatabasesResponse {
     pub databases: Option<Vec<Database>>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Database {
     /// database_name
     ///
@@ -128,7 +128,7 @@ pub struct GetTablesRequest {
     pub without_tablemeta: Option<bool>,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct GetTablesResponse {
     /// is_success
     ///
@@ -158,7 +158,7 @@ pub struct GetTablesResponse {
     pub tables: Option<Vec<Table>>,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Table {
     /// create_time
     ///
@@ -251,8 +251,8 @@ pub struct Table {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct GetPartitionsResponse {
-    pub is_success: Option<bool>,
-    pub message: Option<String>,
+    pub is_success: bool,
+    pub message: String,
     pub partitions: Option<Partitions>,
 }
 
@@ -274,7 +274,7 @@ pub struct PartitionInfo {
     pub total_size: Option<i64>,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct GetTableResponse {
     pub is_success: bool,
     pub message: String,
@@ -288,13 +288,13 @@ pub struct GetTableResponse {
     pub create_table_sql: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct StorageProperty {
     pub key: String,
     pub value: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Column {
     #[serde(rename = "column_name")]
     pub name: String,
