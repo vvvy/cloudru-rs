@@ -4,7 +4,6 @@ use anyhow::Result;
 use blocking::dli::{DliClient, DliClientBuild};
 use clap::{Args, Subcommand};
 use cloudru::{blocking::client::*, *};
-use hmac::digest::typenum::Integer;
 use serde_json::to_string_pretty;
 
 #[derive(Args, Debug)]
@@ -49,7 +48,7 @@ fn test_get_databases() -> Result<()> {
 #[test]
 fn test_get_tables() -> Result<()> {
     let dli_client = create_dli_client()?;
-    let database = "dm_top100".to_string();
+    let database = "ods_sber".to_string();
     let response = dli_client.get_tables(&database)?;
     println!("get_tables response: {:?}", response);
 
@@ -63,8 +62,8 @@ fn test_get_tables() -> Result<()> {
 #[test]
 fn test_get_table() -> Result<()> {
     let dli_client = create_dli_client()?;
-    let database = "dm_top100".to_string();
-    let table_name = "sessions_eb".to_string();
+    let database = "ods_sber".to_string();
+    let table_name = "dbo_clients".to_string();
     let response = dli_client.get_table(&database, &table_name)?;
 
     let json_string = to_string_pretty(&response).unwrap();
@@ -81,7 +80,12 @@ fn test_get_partitions() -> Result<()> {
     let dli_client = create_dli_client()?;
     let db_name = "dm_top100".to_string();
     let table_name = "sessions".to_string();
-    let response = dli_client.get_partitions(&db_name, &table_name, Some(10), Some(0), None)?;
+    let response = dli_client.get_partitions(&db_name, &table_name, Some(100), Some(0), None)?;
+    
+    let json_string = to_string_pretty(&response).unwrap();
+    let mut file = File::create(format!("partitions_{}_response.json", table_name)).unwrap();
+    file.write_all(json_string.as_bytes()).unwrap();
+
     println!("get_partitions response: {:?}", response);
     Ok(())
 }
