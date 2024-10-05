@@ -180,6 +180,21 @@ impl Bucket {
         Ok(rv)
     }
 
+    /// get object version at `remote_path`
+    pub async fn get_object_version(&self, remote_path: impl AsRef<str>, version_id: impl AsRef<str>) -> Result<Bytes> {
+        let url = self.url(remote_path).with_var("versionId", version_id.as_ref());
+        let request = self.http_client.request(Method::GET, url);
+        let request: RequestBuilder = self.start_request(request);
+        let request = self.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let result = self.http_client.execute(request).await?;
+        bail_on_failure!(result);
+        let rv = result.bytes().await?;
+        
+        Ok(rv)
+    }
 
     /// put object at `remote_path` filling it with data read from `input`
     pub async fn put_object<I>(&self, remote_path: impl AsRef<str>, input: I) -> Result<()> where Body: From<I> {

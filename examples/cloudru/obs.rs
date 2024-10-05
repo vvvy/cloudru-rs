@@ -21,7 +21,10 @@ enum ObsCommand {
 #[derive(Args, Debug)]
 struct ObsGet {
     remote: String, 
-    local: Option<String>, 
+    local: Option<String>,
+
+    #[clap(long, short)]
+    version_id: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -123,7 +126,12 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
                 source_path)?;
             let bucket = client.bucket(bucket_name.to_owned())?;
             let mut output_file = std::fs::OpenOptions::new().create(true).truncate(true).write(true).open(&target_path)?;
-            bucket.get_object(source_path, &mut output_file)?;
+            if let Some(version_id) = get.version_id {
+                bucket.get_object_version(source_path, &version_id, &mut output_file)?;
+            } else {
+                bucket.get_object(source_path, &mut output_file)?;
+            }
+            
             Ok(JsonValue::Bool(true))
         }
         ObsCommand::Put(put) => {
@@ -147,6 +155,12 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             };
             let list = bucket.list_objects(list_request)?;
             let Some(contents) = list.contents else { return Ok(JsonValue::Bool(true)) };
+            if ls.long {
+                println!("etag\tstorage_class\towner\ttype\tsize\tlast_modified\tkey")
+            } else {
+                println!("type\tsize\tlast_modified\tkey")
+            }
+            println!("---------------------------------------");
             for ListObjectsContents { 
                 key, 
                 last_modified, 
@@ -182,6 +196,12 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             };
             let list = bucket.list_object_versions(list_request)?;
             let Some(contents) = list.version else { return Ok(JsonValue::Bool(true)) };
+            if ls.long {
+                println!("version_id\tlatest\tetag\tstorage_class\towner\ttype\tsize\tlast_modified\tkey")
+            } else {
+                println!("version_id\tlatest\ttype\tsize\tlast_modified\tkey")
+            }
+            println!("---------------------------------------");
             for ListObjectsContents { 
                 key, 
                 last_modified, 
@@ -195,12 +215,16 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
          } in contents {
                 let type_ = type_.as_deref().unwrap_or("-");
                 let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
-                let version_id = version_id.unwrap();
-                let is_latest = is_latest.unwrap();
+                let version_id = version_id.as_deref().unwrap_or("-");
+                let latest = match is_latest {
+                    Some(true) => "latest",
+                    Some(false) => "-",
+                    None => "?"
+                };
                 if ls.long {
-                    println!("{version_id}\t{is_latest}\t{etag}\t{storage_class}\t{owner}\t{type_}\t{size}\t{last_modified}\t{key}")
+                    println!("{version_id}\t{latest}\t{etag}\t{storage_class}\t{owner}\t{type_}\t{size}\t{last_modified}\t{key}")
                 } else {
-                    println!("{version_id}\t{is_latest}\t{type_}\t{size}\t{last_modified}\t{key}")
+                    println!("{version_id}\t{latest}\t{type_}\t{size}\t{last_modified}\t{key}")
                 }
             }
             if let Some(next_key_marker) = list.next_key_marker {

@@ -188,6 +188,22 @@ impl Bucket {
         Ok(())
     }
 
+    /// get object version at `remote_path` and write its data to `w`
+    pub fn get_object_version<W: Write>(&self, remote_path: impl AsRef<str>, version_id: impl AsRef<str>, w: &mut W) -> Result<()> {
+        let url = self.url(remote_path).with_var("versionId", version_id.as_ref());
+        let request = self.http_client.request(Method::GET, url);
+        let request = self.start_request(request);
+        let request = self.sign_request(request)?;
+
+        debug!(request_full=?request);
+
+        let mut result = self.http_client.execute(request)?;
+        bail_on_failure!(result);
+        
+        result.copy_to(w)?;
+        Ok(())
+    }
+
     /// put object at `remote_path` filling it with data read from `input`
     pub fn put_object<I>(&self, remote_path: impl AsRef<str>, input: I) -> Result<()> where Body: From<I> {
         let request = self.http_client.request(Method::PUT, self.url(remote_path));
