@@ -128,6 +128,39 @@ impl Bucket {
 
     }
 
+    #[instrument]
+    pub fn list_object_versions(&self, request: ListObjectsRequest<'_>) -> Result<ListObjectVersionsResult> {
+        
+        let url = self.url("/")
+            .with_var_key("versions")
+            .with_var_opt("prefix", request.prefix)
+            .with_var_opt("marker", request.marker)
+            .with_var_opt("max_keys", request.max_keys.map(|s| format!("{s}")))
+            .with_var_opt("delimiter", request.delimiter)
+            .with_var_opt("key_marker", request.key_marker)
+            .with_var_opt("version_id_marker", request.version_id_marker)
+            ;
+
+        let request = self.http_client.request(Method::GET, url)
+            .header("host", self.host.clone())
+            .timestamp_and_sign(&self.bucket_name, &self.credentials)?;
+
+        debug!(request_full=?request);
+
+        let result = self.http_client.execute(request)?;
+        bail_on_failure!(result);
+
+        let p: ListObjectVersionsResult = if enabled!(Level::DEBUG) {
+            let text = result.text()?;
+            debug!(response_text=?&text);
+            serde_xml_rs::from_str(&text)?
+        } else {
+            serde_xml_rs::from_reader(result)?
+        };
+        Ok(p)
+
+    }
+
     pub fn list(&self, prefix: Option<&str>) -> Result<ListObjectsResult> {
         self.list_objects(ListObjectsRequest { prefix, ..Default::default() })
     }

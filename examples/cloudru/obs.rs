@@ -13,6 +13,7 @@ enum ObsCommand {
     Get(ObsGet),
     Put(ObsPut),
     Ls(ObsLs),
+    LsVersions(ObsLsVersions),
     BucketMetadata(ObsBucketMetadata),
     ObjectMetadata(ObsObjectMetadata),
 }
@@ -31,6 +32,20 @@ struct ObsPut {
 
 #[derive(Args, Debug)]
 struct ObsLs {
+    remote: String,
+
+    #[clap(long, short)]
+    long: bool,
+
+    #[clap(long, short)]
+    marker: Option<String>,
+
+    #[clap(long, short='n')]
+    max_keys: Option<u32>,
+}
+
+#[derive(Args, Debug)]
+struct ObsLsVersions {
     remote: String,
 
     #[clap(long, short)]
@@ -132,7 +147,16 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             };
             let list = bucket.list_objects(list_request)?;
             let Some(contents) = list.contents else { return Ok(JsonValue::Bool(true)) };
-            for ListObjectsContents { key, last_modified, etag, size, storage_class, type_, owner } in contents {
+            for ListObjectsContents { 
+                key, 
+                last_modified, 
+                etag, 
+                size, 
+                storage_class, 
+                type_, 
+                owner,
+                ..
+         } in contents {
                 let type_ = type_.as_deref().unwrap_or("-");
                 let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
                 if ls.long {
@@ -143,6 +167,44 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             }
             if let Some(next_marker) = list.next_marker {
                 println!("next_marker: {next_marker}")
+            }
+            Ok(JsonValue::Bool(true))
+        }
+        ObsCommand::LsVersions(ls) => {
+            let (bucket_name, bucket_path) = split_bucket(&ls.remote);
+            let bucket = client.bucket(bucket_name.to_owned())?;
+
+            let list_request = ListObjectsRequest {
+                prefix: Some(bucket_path),
+                marker: ls.marker.as_deref(),
+                max_keys: ls.max_keys,
+                ..Default::default()
+            };
+            let list = bucket.list_object_versions(list_request)?;
+            let Some(contents) = list.version else { return Ok(JsonValue::Bool(true)) };
+            for ListObjectsContents { 
+                key, 
+                last_modified, 
+                etag, 
+                size, 
+                storage_class, 
+                type_, 
+                owner,
+                version_id,
+                is_latest,
+         } in contents {
+                let type_ = type_.as_deref().unwrap_or("-");
+                let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
+                let version_id = version_id.unwrap();
+                let is_latest = is_latest.unwrap();
+                if ls.long {
+                    println!("{version_id}\t{is_latest}\t{etag}\t{storage_class}\t{owner}\t{type_}\t{size}\t{last_modified}\t{key}")
+                } else {
+                    println!("{version_id}\t{is_latest}\t{type_}\t{size}\t{last_modified}\t{key}")
+                }
+            }
+            if let Some(next_key_marker) = list.next_key_marker {
+                println!("next_key_marker: {next_key_marker}")
             }
             Ok(JsonValue::Bool(true))
         }
