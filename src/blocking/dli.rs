@@ -80,7 +80,7 @@ impl DliClient {
         query_params.push(format!("limit={}", limit));
         query_params.push(format!("offset={}", offset));
         if !filter.is_empty() {
-            query_params.push(format!("filter={}", filter));
+            query_params.push(filter.to_owned());
         }
 
         if !query_params.is_empty() {

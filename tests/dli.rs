@@ -80,8 +80,10 @@ fn test_get_partitions() -> Result<()> {
     let dli_client = create_dli_client()?;
     let db_name = "dm_top100".to_string();
     let table_name = "sessions".to_string();
-    let response = dli_client.get_partitions(&db_name, &table_name, Some(100), Some(0), None)?;
-    
+    let filter = "dt=2024-04-08";
+    let response =
+        dli_client.get_partitions(&db_name, &table_name, Some(3), Some(0), Some(filter))?;
+
     let json_string = to_string_pretty(&response).unwrap();
     let mut file = File::create(format!("partitions_{}_response.json", table_name)).unwrap();
     file.write_all(json_string.as_bytes()).unwrap();
