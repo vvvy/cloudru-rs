@@ -303,3 +303,219 @@ pub struct Column {
     pub r#type: String,
     pub is_partition_column: bool,
 }
+
+/// Represents the response from the DLI Submit SQL Job API.
+///
+/// This struct corresponds to the API response documented here:
+/// API Documentation: [Submitting a SQL Job](https://support.hc.sbercloud.ru/en-us/api/dli/dli_02_0102.html)
+#[derive(Debug, Deserialize)]
+pub struct SubmitSqlJobResponse {
+    /// Indicates whether the request was successfully sent.
+    ///
+    /// - **Mandatory**: Yes
+    /// - **Type**: Boolean
+    /// - **Description**: Value `true` indicates that the request is successfully sent.
+    pub is_success: bool,
+
+    /// System prompt message.
+    ///
+    /// - **Mandatory**: Yes
+    /// - **Type**: String (optional)
+    /// - **Description**: If execution succeeds, this field may be empty.
+    pub message: Option<String>,
+
+    /// ID of the submitted job.
+    ///
+    /// - **Mandatory**: Yes
+    /// - **Type**: String (optional)
+    /// - **Description**: The job ID can be used to query the job status and results.
+    pub job_id: Option<String>,
+
+    /// Type of the submitted job.
+    ///
+    /// - **Mandatory**: Yes
+    /// - **Type**: String (optional)
+    /// - **Description**: Job type. Possible values:
+    ///   - `DDL`
+    ///   - `DCL`
+    ///   - `IMPORT`
+    ///   - `EXPORT`
+    ///   - `QUERY`
+    ///   - `INSERT`
+    pub job_type: Option<String>,
+
+    /// Job execution mode.
+    ///
+    /// - **Mandatory**: No
+    /// - **Type**: String (optional)
+    /// - **Description**: The options are:
+    ///   - `async`: Asynchronous
+    ///   - `sync`: Synchronous
+    pub job_mode: Option<String>,
+}
+
+impl Default for SubmitSqlJobResponse {
+    fn default() -> Self {
+        SubmitSqlJobResponse {
+            is_success: false,
+            message: None,
+            job_id: None,
+            job_type: None,
+            job_mode: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Tag {
+    pub key: String,
+    pub value: String,
+}
+
+/// Represents the response from the Query Job Status API.
+///
+/// This struct contains detailed information about the status of a job submitted
+/// to the DLI service.
+///
+/// # API Reference
+///
+/// API Documentation: [Querying Job Status](https://support.hc.sbercloud.ru/en-us/api/dli/dli_02_0021.html)
+#[derive(Debug, Deserialize)]
+pub struct QueryJobStatusResponse {
+    /// Indicates whether the request was successfully executed.
+    ///
+    /// - **Type**: Boolean
+    /// - **Description**: `true` if the request was successful.
+    pub is_success: bool,
+
+    /// System prompt message.
+    ///
+    /// - **Type**: String (optional)
+    /// - **Description**: If execution succeeds, this field may be empty.
+    pub message: Option<String>,
+
+    /// Job ID of the queried job.
+    ///
+    /// - **Type**: String (optional)
+    /// - **Description**: The ID of the job being queried.
+    pub job_id: Option<String>,
+
+    /// The type of the job.
+    ///
+    /// - **Type**: String (optional)
+    /// - **Description**: Possible values include:
+    ///   - `DDL`
+    ///   - `DCL`
+    ///   - `IMPORT`
+    ///   - `EXPORT`
+    ///   - `QUERY`
+    ///   - `INSERT`
+    ///   - `DATA_MIGRATION`
+    ///   - `UPDATE`
+    ///   - `DELETE`
+    ///   - `RESTART_QUEUE`
+    ///   - `SCALE_QUEUE`
+    pub job_type: Option<String>,
+
+    /// The execution mode of the job.
+    ///
+    /// - **Type**: String (optional)
+    /// - **Description**: Can be either:
+    ///   - `async`: Asynchronous mode
+    ///   - `sync`: Synchronous mode
+    pub job_mode: Option<String>,
+
+    /// Name of the queue where the job was submitted.
+    pub queue_name: Option<String>,
+
+    /// User who submitted the job.
+    pub owner: Option<String>,
+
+    /// Start time of the job (in milliseconds since the epoch).
+    pub start_time: Option<u64>,
+
+    /// Duration of the job execution (in milliseconds).
+    pub duration: Option<u64>,
+
+    /// Current status of the job.
+    ///
+    /// Possible values include:
+    /// - `RUNNING`
+    /// - `SCALING`
+    /// - `LAUNCHING`
+    /// - `FINISHED`
+    /// - `FAILED`
+    /// - `CANCELLED`
+    pub status: Option<String>,
+
+    /// Number of rows scanned during the Insert job execution.
+    pub input_row_count: Option<u64>,
+
+    /// Number of bad rows encountered during the Insert job execution.
+    pub bad_row_count: Option<u64>,
+
+    /// Size of input data scanned during the job execution (in bytes).
+    pub input_size: Option<u64>,
+
+    /// Total number of records returned or inserted by the job.
+    pub result_count: Option<u32>,
+
+    /// Name of the database associated with the job.
+    ///
+    /// This field is only valid for jobs of type `IMPORT`, `EXPORT`, or `QUERY`.
+    pub database_name: Option<String>,
+
+    /// Name of the table associated with the job.
+    ///
+    /// This field is only valid for jobs of type `IMPORT`, `EXPORT`, or `QUERY`.
+    pub table_name: Option<String>,
+
+    /// Additional details about the job, typically as a JSON string.
+    pub detail: Option<String>,
+
+    /// The SQL statement used in the job.
+    pub statement: Option<String>,
+
+    /// Tags associated with the job.
+    pub tags: Option<Vec<Tag>>,
+
+    /// User-defined configuration details as a JSON string.
+    pub user_conf: Option<String>,
+
+    /// The storage format of job results.
+    ///
+    /// Currently, only `CSV` is supported.
+    pub result_format: Option<String>,
+
+    /// Path to the job results in Object Storage Service (OBS).
+    pub result_path: Option<String>,
+}
+
+impl Default for QueryJobStatusResponse {
+    fn default() -> Self {
+        QueryJobStatusResponse {
+            is_success: false,
+            message: None,
+            job_id: None,
+            job_type: None,
+            job_mode: None,
+            queue_name: None,
+            owner: None,
+            start_time: None,
+            duration: None,
+            status: None,
+            input_row_count: None,
+            bad_row_count: None,
+            input_size: None,
+            result_count: None,
+            database_name: None,
+            table_name: None,
+            detail: None,
+            statement: None,
+            tags: None,
+            user_conf: None,
+            result_format: None,
+            result_path: None,
+        }
+    }
+}
