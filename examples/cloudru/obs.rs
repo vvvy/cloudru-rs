@@ -12,6 +12,7 @@ pub struct Obs {
 enum ObsCommand {
     Get(ObsGet),
     Put(ObsPut),
+    PutStr(ObsPutStr),
     Ls(ObsLs),
     LsVersions(ObsLsVersions),
     BucketMetadata(ObsBucketMetadata),
@@ -32,6 +33,13 @@ struct ObsPut {
     local: String,
     remote: String, 
 }
+
+#[derive(Args, Debug)]
+struct ObsPutStr {
+    string: String,
+    remote: String, 
+}
+
 
 #[derive(Args, Debug)]
 struct ObsLs {
@@ -141,6 +149,13 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             let bucket = client.bucket(bucket_name.to_owned())?;
             let input_file = std::fs::File::open(&source_path)?;
             bucket.put_object(&target_path, input_file)?;
+            Ok(JsonValue::Bool(true))
+        }
+        ObsCommand::PutStr(put) => {
+            let (bucket_name, target_path) = split_bucket(&put.remote);
+            let bucket = client.bucket(bucket_name.to_owned())?;
+            let source = put.string;
+            bucket.put_object(&target_path, source)?;
             Ok(JsonValue::Bool(true))
         }
         ObsCommand::Ls(ls) => {

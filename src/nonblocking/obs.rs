@@ -2,6 +2,7 @@ use std::io;
 
 use bytes::Bytes;
 
+use http::header::CONTENT_LENGTH;
 use tracing::{debug, instrument};
 use reqwest::{header::{HeaderMap, HeaderValue}, Body, Method, Request, RequestBuilder};
 use url::Url;
@@ -55,6 +56,15 @@ trait Signer {
 impl Signer for RequestBuilder {
     fn timestamp_and_sign(self, bucket_name: &str, credentials: &Credentials) -> Result<Request> {
         let mut request = self.build()?;
+
+        // work around HTTP 411 issue when a 0-length object is created
+        if 
+            request.method() == Method::PUT &&
+            request.body().and_then(|b| b.as_bytes()).is_some_and(|w| w.is_empty()) 
+        {
+            request.headers_mut().entry(CONTENT_LENGTH).or_insert_with(|| "0".parse().unwrap());
+        }
+
         let dt = time::OffsetDateTime::now_utc();
         time_stamp_and_sign(bucket_name, &mut R { r: &mut request }, dt, &credentials.ak, &credentials.sk)?;
         Ok(request)
