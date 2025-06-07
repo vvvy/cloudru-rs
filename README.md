@@ -1,19 +1,13 @@
 # `cloud.ru` Advanced API in Rust
 
-# Конфигурация
+# Конфигурация (быстрый старт)
 
-## значения по умолчанию
-```rust
-DEFAULT_CREDENTIALS_FILE = "~/.cloudru/credentials";
-DEFAULT_CONFIG_FILE = "~/.cloudru/config";
-DEFAULT_CREDENTIAL = "default";
-DEFAULT_LOG_LEVEL = "INFO";
-ACCESS_KEY_ID_KEY = "access_key_id";
-SECRET_ACCESS_KEY_KEY = "secret_access_key";
-```
+Конфигурация библиотеки доступна как через конфигурационные файлы (рекомендованный путь), так и программным способом.
+Здесь описана конфигурация через конфигурационные файлы.
 
-## OBS
-По умолчанию используется директория `~/.cloudru`. Для корректной работы в этой директории должен находиться файл `credentials` без расширения, но с содержимым в формате `.ini`. 
+По умолчанию для конфигурационных файлов используется директория `~/.cloudru`.  
+
+В этой директории должен находиться файл `credentials` с содержимым в формате `.ini`. 
 Пример содержимого файла `credentials`:
 
 ```ini
@@ -22,14 +16,11 @@ access_key_id=YOUR_ACCESS_KEY
 secret_access_key=YOUR_SECRET_KEY
 ```
 
-
-
 ## DLI
-Минимальный конфиг файл `~/.cloudru/config` настроек для запуска
+
+Минимальный конфиг файл `~/.cloudru/config` настроек для DLI:
+
 ```ini
 [common]
-project_id="project_id"
-
-[endpoint]
-dli="https://dli_url"
+project_id=YOUR_PROJECT_ID
 ```
