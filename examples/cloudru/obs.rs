@@ -45,14 +45,29 @@ struct ObsPutStr {
 struct ObsLs {
     remote: String,
 
+    /// Long listing
     #[clap(long, short)]
     long: bool,
 
+    /// Marker to start at
     #[clap(long, short)]
     marker: Option<String>,
 
+    /// Max keys per page
     #[clap(long, short='n')]
     max_keys: Option<u32>,
+
+    /// List this number of pages
+    #[clap(long, short='c')]
+    pages: Option<usize>,
+
+    /// List all objects under the prefix
+    #[clap(long, short='a')]
+    all: bool,    
+
+    /// Print non-file entries
+    #[clap(long, short='r')]
+    raw: bool,
 }
 
 #[derive(Args, Debug)]
@@ -155,48 +170,93 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             let (bucket_name, target_path) = split_bucket(&put.remote);
             let bucket = client.bucket(bucket_name.to_owned())?;
             let source = put.string;
-            bucket.put_object(&target_path, source)?;
+            bucket.put_object(target_path, source)?;
             Ok(JsonValue::Bool(true))
         }
         ObsCommand::Ls(ls) => {
             let (bucket_name, bucket_path) = split_bucket(&ls.remote);
             let bucket = client.bucket(bucket_name.to_owned())?;
-
-            let list_request = ListObjectsRequest {
-                prefix: Some(bucket_path),
-                marker: ls.marker.as_deref(),
-                max_keys: ls.max_keys,
-                ..Default::default()
-            };
-            let list = bucket.list_objects(list_request)?;
-            let Some(contents) = list.contents else { return Ok(JsonValue::Bool(true)) };
             if ls.long {
-                println!("etag\tstorage_class\towner\ttype\tsize\tlast_modified\tkey")
+                println!("etag\tstorage_class\towner\ttype\tsize\tlast_modified\tkey");
+                println!("----\t-------------\t-----\t----\t----\t-------------\t---");
             } else {
-                println!("type\tsize\tlast_modified\tkey")
+                println!("type\tsize\tlast_modified\tkey");
+                println!("----\t----\t-------------\t---");
             }
-            println!("---------------------------------------");
-            for ListObjectsContents { 
-                key, 
-                last_modified, 
-                etag, 
-                size, 
-                storage_class, 
-                type_, 
-                owner,
-                ..
-         } in contents {
-                let type_ = type_.as_deref().unwrap_or("-");
-                let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
-                if ls.long {
-                    println!("{etag}\t{storage_class}\t{owner}\t{type_}\t{size}\t{last_modified}\t{key}")
-                } else {
-                    println!("{type_}\t{size}\t{last_modified}\t{key}")
+
+            let mut marker = ls.marker;
+            let pages = if let Some(pages) = ls.pages { 
+                pages 
+            } else if ls.all {
+                usize::MAX
+            } else {
+                1
+            };
+
+            let mut size_max = 0;
+            let mut size_min = u64::MAX;
+            let mut size_total = 0; 
+            let mut count = 0;
+
+            for _ in 0..pages {
+                let list_request = ListObjectsRequest {
+                    prefix: Some(bucket_path),
+                    marker: marker.as_deref(),
+                    max_keys: ls.max_keys,
+                    ..Default::default()
+                };
+                let list = bucket.list_objects(list_request)?;
+                let Some(contents) = list.contents else { break };
+
+                for ListObjectsContents { 
+                    key, 
+                    last_modified, 
+                    etag, 
+                    size, 
+                    storage_class, 
+                    type_, 
+                    owner,
+                    ..
+                } in contents {
+                    let is_std_entry = !key.ends_with('/');
+
+                    if ls.raw || is_std_entry {
+                        let type_ = type_.as_deref().unwrap_or("-");
+                        let owner = owner.as_ref().map(|s| &s.id as &str).unwrap_or("-");
+                        if ls.long {
+                            println!("{etag}\t{storage_class}\t{owner}\t{type_}\t{size}\t{last_modified}\t{key}")
+                        } else {
+                            println!("{type_}\t{size}\t{last_modified}\t{key}")
+                        }
+                    }
+
+                    if is_std_entry {
+                        count += 1;
+                        size_total += size;
+                        size_max = size_max.max(size);
+                        size_min = size_min.min(size);
+                    }
                 }
+
+                marker = list.next_marker;
+
+                if marker.is_none() { break }
             }
-            if let Some(next_marker) = list.next_marker {
-                println!("next_marker: {next_marker}")
+            if ls.long {
+                println!("----\t-------------\t-----\t----\t----\t-------------\t---");
+                println!("etag\tstorage_class\towner\ttype\tsize\tlast_modified\tkey");
+            } else {
+                println!("----\t----\t-------------\t---");
+                println!("type\tsize\tlast_modified\tkey");
             }
+            if let Some(marker) = marker {
+                println!("\nnext_marker: {marker}");
+            }
+
+            if count > 0 {
+                println!("\nstats: count={count} size_total={size_total} size_min={size_min} size_max={size_max}");
+            }
+
             Ok(JsonValue::Bool(true))
         }
         ObsCommand::LsVersions(ls) => {
