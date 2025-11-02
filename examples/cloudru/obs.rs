@@ -118,6 +118,58 @@ fn force_file_name(target_path: &str, source_path: &str) -> Result<String> {
 }
 
 
+fn hr_size(w: u64) -> String {
+    if w < 1024 {
+        return format!("{w}");
+    }
+
+    let w = w/1024;
+
+    if w < 1024 {
+        return format!("{w}K");
+    }
+
+    let w = w/1024;
+
+    if w < 1024 {
+        return format!("{w}M");
+    }
+
+    let w = w/1024;
+
+    if w < 1024 {
+        return format!("{w}G");
+    }
+
+    let w = w/1024;
+
+    if w < 1024 {
+        return format!("{w}T");
+    }
+    
+    let w = w/1024;
+    format!("{w}P")
+}
+
+#[test]
+fn test_format_number() {
+    assert_eq!("1023", hr_size(1023));
+    assert_eq!("1K", hr_size(1024));
+    assert_eq!("1K", hr_size(1025));
+
+    assert_eq!("1023K", hr_size(1024*1024-1));
+    assert_eq!("1M", hr_size(1024*1024));
+
+    assert_eq!("1023M", hr_size(1024*1024*1024-1));
+    assert_eq!("1G", hr_size(1024*1024*1024));
+
+    assert_eq!("1023G", hr_size(1024*1024*1024*1024-1));
+    assert_eq!("1T", hr_size(1024*1024*1024*1024));
+
+    assert_eq!("1023T", hr_size(1024*1024*1024*1024*1024-1));
+    assert_eq!("1P", hr_size(1024*1024*1024*1024*1024));
+}
+
 
 #[test]
 fn test_split_remote() {
@@ -197,6 +249,7 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             let mut size_min = u64::MAX;
             let mut size_total = 0; 
             let mut count = 0;
+            let mut sizes = vec![];
 
             for _ in 0..pages {
                 let list_request = ListObjectsRequest {
@@ -235,6 +288,7 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
                         size_total += size;
                         size_max = size_max.max(size);
                         size_min = size_min.min(size);
+                        sizes.push(size);
                     }
                 }
 
@@ -254,7 +308,23 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             }
 
             if count > 0 {
-                println!("\nstats: count={count} size_total={size_total} size_min={size_min} size_max={size_max}");
+                let size_avg = size_total/count;
+                sizes.sort();
+
+                let lh = sizes.len()/2;
+                let size_median = if sizes.len() % 2 == 0 {
+                    (sizes[lh] + sizes[lh-1])/2
+                } else {
+                    sizes[lh]
+                };
+
+                let size_total = hr_size(size_total);
+                let size_min = hr_size(size_min);
+                let size_max = hr_size(size_max);
+                let size_avg = hr_size(size_avg);
+                let size_median = hr_size(size_median);
+
+                println!("\nstats: count={count} size_total={size_total} size_min={size_min} size_max={size_max} size_avg={size_avg} size_median={size_median}");
             }
 
             Ok(JsonValue::Bool(true))
