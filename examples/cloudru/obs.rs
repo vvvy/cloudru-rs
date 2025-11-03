@@ -263,7 +263,8 @@ impl Statistics {
         let size_median = if self.do_median {
             self.sizes.sort();
             let lh = self.sizes.len()/2;
-            if self.sizes.len().is_multiple_of(2) {
+            #[allow(clippy::manual_is_multiple_of)]
+            if self.sizes.len() % 2 == 0 {
                 (self.sizes[lh] + self.sizes[lh-1])/2
             } else {
                 self.sizes[lh]
