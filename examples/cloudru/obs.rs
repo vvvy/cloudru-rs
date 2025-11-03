@@ -1,3 +1,5 @@
+use std::{collections::BTreeMap, fmt, io::Write};
+
 use clap::{Subcommand, Args};
 use anyhow::{Result, anyhow};
 use cloudru::{*, blocking::{*, obs::{ListObjectsContents, ListObjectsRequest}}};
@@ -15,6 +17,7 @@ enum ObsCommand {
     PutStr(ObsPutStr),
     Ls(ObsLs),
     LsVersions(ObsLsVersions),
+    Du(ObsDu),
     BucketMetadata(ObsBucketMetadata),
     ObjectMetadata(ObsObjectMetadata),
 }
@@ -85,6 +88,29 @@ struct ObsLsVersions {
 }
 
 #[derive(Args, Debug)]
+struct ObsDu {
+    remote: String,
+
+    /// Depth
+    #[clap(long, short, default_value_t=1)]
+    depth: usize,
+
+    /// Marker to start at
+    #[clap(long, short)]
+    marker: Option<String>,
+
+    /// Max keys per page
+    #[clap(long, short='n')]
+    max_keys: Option<u32>,
+
+    /// Quit after this number of pages
+    #[clap(long, short='c')]
+    pages: Option<usize>,
+}
+
+
+
+#[derive(Args, Debug)]
 struct ObsBucketMetadata {
     bucket: String,
 }
@@ -117,57 +143,64 @@ fn force_file_name(target_path: &str, source_path: &str) -> Result<String> {
     else { Ok(target_path.to_owned())  }
 }
 
+struct HrSize(u64);
 
-fn hr_size(w: u64) -> String {
-    if w < 1024 {
-        return format!("{w}");
+impl fmt::Display for HrSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let w = self.0;
+        if f.alternate() {
+            return w.fmt(f);
+        }
+        if w < 1024 {
+            w.fmt(f)?;
+            return write!(f, " ");
+        }
+        let w = w/1024;
+        if w < 1024 {
+            w.fmt(f)?;
+            return write!(f, "K");
+        }
+        let w = w/1024;
+        if w < 1024 {
+            w.fmt(f)?;
+            return write!(f, "M");
+        }
+        let w = w/1024;
+        if w < 1024 {
+            w.fmt(f)?;
+            return write!(f, "G");
+        }
+        let w = w/1024;
+        if w < 1024 {
+            w.fmt(f)?;
+            return write!(f, "T");
+        }  
+        let w = w/1024;
+        w.fmt(f)?;
+        write!(f, "P")
     }
-
-    let w = w/1024;
-
-    if w < 1024 {
-        return format!("{w}K");
-    }
-
-    let w = w/1024;
-
-    if w < 1024 {
-        return format!("{w}M");
-    }
-
-    let w = w/1024;
-
-    if w < 1024 {
-        return format!("{w}G");
-    }
-
-    let w = w/1024;
-
-    if w < 1024 {
-        return format!("{w}T");
-    }
-    
-    let w = w/1024;
-    format!("{w}P")
 }
+
+
 
 #[test]
 fn test_format_number() {
-    assert_eq!("1023", hr_size(1023));
-    assert_eq!("1K", hr_size(1024));
-    assert_eq!("1K", hr_size(1025));
+    assert_eq!("1023", format!("{}", HrSize(1023)));
+    assert_eq!("1K", format!("{}", HrSize(1024)));
+    assert_eq!("1K", format!("{}", HrSize(1025)));
+    assert_eq!("1025", format!("{:#}", HrSize(1025)));
 
-    assert_eq!("1023K", hr_size(1024*1024-1));
-    assert_eq!("1M", hr_size(1024*1024));
+    assert_eq!("1023K", format!("{}", HrSize(1024*1024-1)));
+    assert_eq!("1M", format!("{}", HrSize(1024*1024)));
 
-    assert_eq!("1023M", hr_size(1024*1024*1024-1));
-    assert_eq!("1G", hr_size(1024*1024*1024));
+    assert_eq!("1023M", format!("{}", HrSize(1024*1024*1024-1)));
+    assert_eq!("1G", format!("{}", HrSize(1024*1024*1024)));
 
-    assert_eq!("1023G", hr_size(1024*1024*1024*1024-1));
-    assert_eq!("1T", hr_size(1024*1024*1024*1024));
+    assert_eq!("1023G", format!("{}", HrSize(1024*1024*1024*1024-1)));
+    assert_eq!("1T", format!("{}", HrSize(1024*1024*1024*1024)));
 
-    assert_eq!("1023T", hr_size(1024*1024*1024*1024*1024-1));
-    assert_eq!("1P", hr_size(1024*1024*1024*1024*1024));
+    assert_eq!("1023T", format!("{}", HrSize(1024*1024*1024*1024*1024-1)));
+    assert_eq!("1P", format!("{}", HrSize(1024*1024*1024*1024*1024)));
 }
 
 
@@ -189,6 +222,63 @@ fn test_force_file_name() {
     assert_eq!(force_file_name("c", "file.name").unwrap(), "c".to_owned());
     assert_eq!(force_file_name("", "file.name").unwrap(), "file.name".to_owned());
 
+}
+
+
+struct Statistics {
+    count: u64,
+    size_max: u64,
+    size_min: u64,
+    size_total: u64, 
+    sizes: Vec<u64>,
+    do_median: bool,
+}
+
+impl Default for Statistics {
+    fn default() -> Self {
+        Self { 
+            count: 0, 
+            size_max: 0, 
+            size_min: u64::MAX, 
+            size_total: 0, 
+            sizes: vec![],
+            do_median: false,
+        }
+    }
+}
+
+impl Statistics {
+    fn apply(&mut self, size: u64) {
+        self.count += 1;
+        self.size_total += size;
+        self.size_max = self.size_max.max(size);
+        self.size_min = self.size_min.min(size);
+        if self.do_median { self.sizes.push(size); }     
+    }
+
+    fn result(&mut self) -> Option<(u64, HrSize, HrSize, HrSize, HrSize, HrSize)> {
+        if self.count == 0 { return None; }
+        let size_avg = self.size_total/self.count;
+        
+        let size_median = if self.do_median {
+            self.sizes.sort();
+            let lh = self.sizes.len()/2;
+            if self.sizes.len().is_multiple_of(2) {
+                (self.sizes[lh] + self.sizes[lh-1])/2
+            } else {
+                self.sizes[lh]
+            }
+        } else {
+            0
+        };
+
+        let size_total = HrSize(self.size_total);
+        let size_min = HrSize(self.size_min);
+        let size_max = HrSize(self.size_max);
+        let size_avg = HrSize(size_avg);
+        let size_median = HrSize(size_median);
+        Some((self.count, size_total, size_min, size_max, size_avg, size_median))         
+    }
 }
 
 
@@ -245,11 +335,7 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
                 1
             };
 
-            let mut size_max = 0;
-            let mut size_min = u64::MAX;
-            let mut size_total = 0; 
-            let mut count = 0;
-            let mut sizes = vec![];
+            let mut s = Statistics { do_median: true, ..Default::default() };
 
             for _ in 0..pages {
                 let list_request = ListObjectsRequest {
@@ -284,11 +370,7 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
                     }
 
                     if is_std_entry {
-                        count += 1;
-                        size_total += size;
-                        size_max = size_max.max(size);
-                        size_min = size_min.min(size);
-                        sizes.push(size);
+                        s.apply(size);
                     }
                 }
 
@@ -307,23 +389,7 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
                 println!("\nnext_marker: {marker}");
             }
 
-            if count > 0 {
-                let size_avg = size_total/count;
-                sizes.sort();
-
-                let lh = sizes.len()/2;
-                let size_median = if sizes.len() % 2 == 0 {
-                    (sizes[lh] + sizes[lh-1])/2
-                } else {
-                    sizes[lh]
-                };
-
-                let size_total = hr_size(size_total);
-                let size_min = hr_size(size_min);
-                let size_max = hr_size(size_max);
-                let size_avg = hr_size(size_avg);
-                let size_median = hr_size(size_median);
-
+            if let Some((count, size_total, size_min, size_max, size_avg, size_median)) = s.result() {
                 println!("\nstats: count={count} size_total={size_total} size_min={size_min} size_max={size_max} size_avg={size_avg} size_median={size_median}");
             }
 
@@ -377,6 +443,78 @@ pub fn handle_obs(client: obs::ObsClient, obs: Obs) -> Result<JsonValue> {
             }
             Ok(JsonValue::Bool(true))
         }
+        ObsCommand::Du(du) => {
+            let (bucket_name, bucket_path) = split_bucket(&du.remote);
+            let bucket = client.bucket(bucket_name.to_owned())?;
+ 
+            let mut marker = du.marker;
+            let pages = if let Some(pages) = du.pages { 
+                pages 
+            } else {
+                usize::MAX
+            };
+
+            let mut s: BTreeMap<Vec<String>, Statistics> = BTreeMap::new(); 
+
+            for _ in 0..pages {
+                let list_request = ListObjectsRequest {
+                    prefix: Some(bucket_path),
+                    marker: marker.as_deref(),
+                    max_keys: du.max_keys,
+                    ..Default::default()
+                };
+                let list = bucket.list_objects(list_request)?;
+                let Some(contents) = list.contents else { break };
+
+                for ListObjectsContents { 
+                    key, 
+                    size, 
+                    ..
+                } in contents {
+                    let is_std_entry = !key.ends_with('/');
+
+                    if is_std_entry {
+                        let Some(eff_key) = key.strip_prefix(bucket_path) else {
+                            eprintln!("Got path not matching the prefix (`{bucket_path}`): `{key}`");
+                            continue;
+                        };
+
+                        let eff_key = eff_key.strip_prefix('/').unwrap_or(eff_key);
+
+                        let eff_key: Vec<String> = eff_key.split('/').take(du.depth).map(str::to_owned).collect();
+                        for n in 0..=eff_key.len() {
+                            let k = eff_key[0..n].to_vec();
+                            s.entry(k).or_default().apply(size);
+                        }
+                    }
+                }
+                print!(".");
+                _ = std::io::stdout().flush();
+
+                marker = list.next_marker;
+
+                if marker.is_none() { break }
+            }
+            println!();
+            println!("   count  size_total   size_min   size_max   size_avg dir");
+            println!("-------- ----------- ---------- ---------- ---------- ---");
+
+            for (k, mut v) in s {
+                if let Some((count, size_total, size_min, size_max, size_avg, _)) = v.result() {
+                    let key = k.join("/");
+                    println!("{count:>8} {size_total:>10} {size_min:>9} {size_max:>9} {size_avg:>9} {key}")
+                }
+            }
+            println!("-------- ----------- ---------- ---------- ---------- ---");
+            println!("   count  size_total   size_min   size_max   size_avg dir");
+
+            if let Some(marker) = marker {
+                println!("\nnext_marker: {marker}");
+            }
+
+            Ok(JsonValue::Bool(true))
+        }
+
         ObsCommand::BucketMetadata(bmd) => {
             let bucket = client.bucket(bmd.bucket)?;
             let md = bucket.get_bucket_meta()?;
